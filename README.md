@@ -1,27 +1,30 @@
 # ektel
 
-**Estado:** sin código todavía. Este README documenta intención, no
-implementación.
+**Estado:** preimplementación. Este README documenta intención corregida por
+revisión adversarial, no una implementación ni garantías ya disponibles.
 
 ## Qué se pretende
 
-El runtime de ejecución del ecosistema: el componente que corre acciones de
-agentes de IA bajo compuertas mecánicas, no bajo confianza declarativa.
+Un runtime que separa del proceso ejecutado la admisión, la supervisión y el
+brazo de terminación. Cada garantía debe declarar su fuerza y plataforma; no
+se asume que todas sean límites duros.
 
-Un runtime necesita imponer, en el momento de la ejecución —no antes, no
-después—:
+El diseño investiga tres responsabilidades distintas:
 
-- **Presupuesto acotado** (tokens, tiempo, costo) por acción o por tarea.
-- **Capacidad expirable**: la autorización para actuar tiene ventana de
-  validez y profundidad de delegación, validada en el punto de entrada.
-- **Plazo de resolución**: toda acción termina —ejecutada o descartada— dentro
-  de un tiempo declarado; no hay tareas que queden indefinidamente en el aire.
+- **Admisión autorizada:** descriptor y capacidad expirable validados antes de
+  iniciar.
+- **Ejecución restringida:** sólo para recursos que la plataforma realmente
+  pueda imponer; una medición reactiva no se presenta como límite duro.
+- **Resolución observada:** un supervisor vivo deja de esperar tras el plazo y
+  dirige la terminación del grupo observado, sin prometer scheduler de tiempo
+  real, muerte de procesos escapados ni reparación externa.
 
-Estas tres son las únicas obligaciones que un runtime puede cumplir de forma
-mecánica y verificable, sin depender de que el agente coopere. El resto de
-gobernanza del ecosistema —qué puede hacer, con qué evidencia se acepta su
-resultado— es de otros proyectos (Epistates, Praxis Dev); `ektel` sólo
-ejecuta bajo las tres compuertas de arriba.
+La evidencia actual en macOS refutó `RLIMIT_AS` como límite de memoria y
+`RLIMIT_CPU` como freno no cooperativo. CPU/RSS por muestreo siguen siendo
+observación best-effort con fallos silenciosos posibles. Tokens y costo sólo
+son gobernables para llamadas que atraviesan una frontera mediada. La tabla y
+las decisiones candidatas viven en
+[`docs/consolidacion-para-consenso-2026-08-14.md`](docs/consolidacion-para-consenso-2026-08-14.md).
 
 ## Por qué el nombre
 
@@ -40,11 +43,13 @@ una sola de las magnitudes que restringe.
 - Consume `task-card/v1` de Epistates como entrada.
 - El canal de interrupción (A0) hoy es manual —la terminal de quien lo opera—
   hasta que exista `propylon` como dominio de ingreso independiente.
-- No gobierna qué está permitido hacer; eso lo declara quien despacha la
-  tarea. `ektel` sólo garantiza que, una vez despachada, no se salga de sus
-  tres límites.
+- No gobierna el éxito de negocio. La capacidad declara qué identidad de
+  ejecución puede admitirse; el alcance efectivo depende de mecanismos que se
+  especifican por separado.
 
 ## Siguiente paso
 
-Un esqueleto mínimo que ejecute una acción real bajo las tres compuertas,
-antes que cualquier documento de diseño adicional.
+Llevar el candidato documental a consenso sobre alcance G0-first, capacidad
+raíz, descriptor y estados. La caracterización autorizada ya cubre cuatro
+casos seguros en Darwin; falta ejecutarla y ampliarla en Linux. Hasta entonces
+no se promueven límites de recursos por acuerdo verbal.

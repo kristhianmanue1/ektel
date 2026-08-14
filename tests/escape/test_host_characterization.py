@@ -1,0 +1,169 @@
+"""Caracterización segura de primitivas POSIX usadas por el diseño de ektel."""
+
+from __future__ import annotations
+
+import os
+import platform
+import resource
+import select
+import signal
+import subprocess
+import sys
+import time
+import unittest
+
+
+PYTHON = sys.executable
+SYSTEM = platform.system()
+
+
+def _cpu_seconds(usage: resource.struct_rusage) -> float:
+    return usage.ru_utime + usage.ru_stime
+
+
+class HostCharacterizationTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "POSIX-only characterization")
+    def test_rusage_children_is_post_mortem(self) -> None:
+        before = resource.getrusage(resource.RUSAGE_CHILDREN)
+        child = subprocess.Popen([PYTHON, "-c", "x=0\nwhile True:x+=1"])
+        try:
+            time.sleep(0.75)
+            live = resource.getrusage(resource.RUSAGE_CHILDREN)
+        finally:
+            child.kill()
+            child.wait()
+        after = resource.getrusage(resource.RUSAGE_CHILDREN)
+
+        live_delta = _cpu_seconds(live) - _cpu_seconds(before)
+        reaped_delta = _cpu_seconds(after) - _cpu_seconds(before)
+        self.assertLess(live_delta, 0.05)
+        self.assertGreater(reaped_delta, 0.25)
+
+    @unittest.skipUnless(SYSTEM in {"Darwin", "Linux"}, "Darwin/Linux only")
+    def test_rlimit_as_platform_semantics(self) -> None:
+        code = """
+import resource
+try:
+    resource.setrlimit(resource.RLIMIT_AS, (128 * 1024 * 1024,) * 2)
+except (OSError, ValueError):
+    print("rejected")
+else:
+    print("accepted")
+"""
+        result = subprocess.run(
+            [PYTHON, "-c", code],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        observed = result.stdout.strip()
+        expected = "rejected" if SYSTEM == "Darwin" else "accepted"
+        self.assertEqual(observed, expected)
+
+    @unittest.skipUnless(SYSTEM in {"Darwin", "Linux"}, "Darwin/Linux only")
+    def test_ignored_sigxcpu_platform_semantics(self) -> None:
+        code = """
+import resource
+import signal
+resource.setrlimit(resource.RLIMIT_CPU, (1, 1))
+signal.signal(signal.SIGXCPU, signal.SIG_IGN)
+x = 0
+while True:
+    x += 1
+"""
+        child = subprocess.Popen([PYTHON, "-c", code])
+        deadline = time.monotonic() + 4.0
+        reaped = None
+        while time.monotonic() < deadline:
+            waited_pid, status, usage = os.wait4(child.pid, os.WNOHANG)
+            if waited_pid:
+                reaped = (status, usage)
+                break
+            time.sleep(0.05)
+
+        survived = reaped is None
+        if survived:
+            child.kill()
+            _, status, usage = os.wait4(child.pid, 0)
+        else:
+            status, usage = reaped
+        child.returncode = os.waitstatus_to_exitcode(status)
+        consumed = _cpu_seconds(usage)
+
+        if SYSTEM == "Darwin":
+            self.assertTrue(survived)
+            self.assertGreater(consumed, 1.0)
+            self.assertTrue(os.WIFSIGNALED(status))
+        else:
+            self.assertFalse(survived)
+            self.assertTrue(os.WIFSIGNALED(status))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX-only characterization")
+    def test_killpg_terminates_observed_group(self) -> None:
+        code = """
+import subprocess
+import sys
+import time
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+print(child.pid, flush=True)
+time.sleep(60)
+"""
+        leader = subprocess.Popen(
+            [PYTHON, "-c", code],
+            start_new_session=True,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        assert leader.stdout is not None
+        int(leader.stdout.readline().strip())
+        try:
+            os.killpg(leader.pid, signal.SIGKILL)
+            leader.wait(timeout=2)
+            readable, _, _ = select.select([leader.stdout], [], [], 2.0)
+            self.assertTrue(readable, "descendant kept the group pipe open")
+            self.assertEqual(leader.stdout.read(), "")
+        finally:
+            if leader.poll() is None:
+                os.killpg(leader.pid, signal.SIGKILL)
+                leader.wait()
+            leader.stdout.close()
+
+    @unittest.skipUnless(SYSTEM == "Linux", "Linux /proc-only characterization")
+    def test_linux_cutime_cstime_capture_reaped_children(self) -> None:
+        code = """
+import os
+import time
+for _ in range(8):
+    pid = os.fork()
+    if pid == 0:
+        start = time.process_time()
+        while time.process_time() - start < 0.06:
+            pass
+        os._exit(0)
+for _ in range(8):
+    os.wait()
+print("ready", flush=True)
+time.sleep(30)
+"""
+        parent = subprocess.Popen(
+            [PYTHON, "-c", code],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        assert parent.stdout is not None
+        try:
+            self.assertEqual(parent.stdout.readline().strip(), "ready")
+            with open(f"/proc/{parent.pid}/stat", encoding="ascii") as stream:
+                stat = stream.read()
+            fields_from_state = stat[stat.rfind(")") + 2 :].split()
+            cutime = int(fields_from_state[13])
+            cstime = int(fields_from_state[14])
+            child_cpu_seconds = (cutime + cstime) / os.sysconf("SC_CLK_TCK")
+            self.assertGreater(child_cpu_seconds, 0.2)
+        finally:
+            parent.kill()
+            parent.wait()
+
+
+if __name__ == "__main__":
+    unittest.main()
