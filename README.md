@@ -53,3 +53,6 @@ Llevar el candidato documental a consenso sobre alcance G0-first, capacidad
 raíz, descriptor y estados. La caracterización autorizada ya cubre cuatro
 casos seguros en Darwin; falta ejecutarla y ampliarla en Linux. Hasta entonces
 no se promueven límites de recursos por acuerdo verbal.
+
+La [propuesta de arquitectura M0–M3](docs/propuestas/propuesta-runtime-minimo-m0-m3-2026-08-17.md)
+organiza ese posible primer ciclo sin autorizar todavía su implementación.
