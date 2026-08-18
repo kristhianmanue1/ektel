@@ -164,6 +164,81 @@ time.sleep(30)
             parent.kill()
             parent.wait()
 
+    @unittest.skipUnless(SYSTEM == "Linux", "PR_SET_CHILD_SUBREAPER is Linux-only")
+    def test_orphaned_grandchild_cpu_is_lost_without_subreaper(self) -> None:
+        code = """
+import os
+import resource
+import time
+
+def burn(seconds):
+    start = time.process_time()
+    while time.process_time() - start < seconds:
+        pass
+
+supervisor_pid = os.fork()
+if supervisor_pid == 0:
+    worker_pid = os.fork()
+    if worker_pid == 0:
+        burn(0.3)
+        os._exit(0)
+    os._exit(0)  # supervisor dies without reaping the worker: it is orphaned
+os.waitpid(supervisor_pid, 0)  # we only ever reap our direct child
+usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+print(usage.ru_utime + usage.ru_stime, flush=True)
+"""
+        result = subprocess.run(
+            [PYTHON, "-c", code],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        lost_cpu = float(result.stdout.strip())
+        self.assertLess(
+            lost_cpu,
+            0.1,
+            "el CPU del huerfano se contabilizo pese a no haber subreaper: "
+            "la hipotesis de perdida no aplica en este kernel",
+        )
+
+    @unittest.skipUnless(SYSTEM == "Linux", "PR_SET_CHILD_SUBREAPER is Linux-only")
+    def test_subreaper_recovers_orphaned_grandchild_cpu(self) -> None:
+        code = """
+import ctypes
+import os
+import resource
+import time
+
+PR_SET_CHILD_SUBREAPER = 36
+libc = ctypes.CDLL(None, use_errno=True)
+if libc.prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
+    raise SystemExit("prctl(PR_SET_CHILD_SUBREAPER) failed")
+
+def burn(seconds):
+    start = time.process_time()
+    while time.process_time() - start < seconds:
+        pass
+
+supervisor_pid = os.fork()
+if supervisor_pid == 0:
+    worker_pid = os.fork()
+    if worker_pid == 0:
+        burn(0.3)
+        os._exit(0)
+    os._exit(0)  # supervisor dies; the worker reparents to us, the subreaper
+os.waitpid(supervisor_pid, 0)
+_, _, usage = os.wait4(-1, 0)  # reap the reparented orphan directly
+print(usage.ru_utime + usage.ru_stime, flush=True)
+"""
+        result = subprocess.run(
+            [PYTHON, "-c", code],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        recovered_cpu = float(result.stdout.strip())
+        self.assertGreater(recovered_cpu, 0.2)
+
 
 if __name__ == "__main__":
     unittest.main()

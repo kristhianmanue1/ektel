@@ -71,7 +71,71 @@ ejecución exitosa de `test_linux_cutime_cstime_capture_reaped_children`
 ## Siguiente paso propuesto para ADR-006
 
 Esta corrida es insumo, no cierre. ADR-006 (plataforma y lenguaje iniciales)
-puede citarla como evidencia **L** de que Linux x86_64/aarch64 comparte al
-menos el comportamiento base de `RLIMIT_AS` y `cutime/cstime` con lo
-esperado, pero no puede declarar E1 resuelta hasta correr en x86_64 y sobre
-el caso de padre terminado.
+puede citarla como evidencia **L** de que Linux aarch64 comparte al menos el
+comportamiento base de `RLIMIT_AS` y `cutime/cstime` con lo esperado, pero no
+puede declarar E1 resuelta hasta correr en x86_64 real y sobre el caso de
+padre terminado.
+
+## Intento de x86_64 vía emulación (mismo día) — resultado inconcluso
+
+Se intentó cerrar el hueco de arquitectura corriendo la misma imagen (mismo
+digest) con `docker run --platform linux/amd64`. Docker Desktop resuelve esto
+con Rosetta 2 (traducción binaria de Apple), no con hardware ni con QEMU.
+
+**Resultado:** 4 de 5 pruebas OK. `test_rlimit_as_platform_semantics` no
+produjo `accepted`/`rejected`: el subproceso murió con
+`rosetta error: mmap_anonymous_rw mmap failed, size=1000` antes de imprimir
+nada.
+
+**Diagnóstico:** no es evidencia sobre el kernel Linux x86_64. Rosetta
+necesita mapear memoria propia para su traducción JIT; el `RLIMIT_AS` de
+128 MiB que el test aplica al propio intérprete es suficientemente estrecho
+para chocar con esa necesidad de Rosetta antes de que el `try/except` de
+Python llegue a ejecutarse. Confirmado reproduciendo el mismo `setrlimit`
+aislado, fuera de la suite, con el mismo resultado.
+
+**Conclusión honesta:** la emulación x86_64 de Docker Desktop en Apple
+Silicon (vía Rosetta) **no es un sustituto válido** para este test
+específico. Los otros 4 casos sí corrieron sobre código traducido y no
+muestran el mismo problema, pero como el binario entero pasa por Rosetta,
+tampoco se tratan aquí como evidencia fuerte de comportamiento nativo
+x86_64 — quedan registrados como dato adicional de bajo peso, no como cierre
+de E1. El hueco de arquitectura sigue abierto: hace falta x86_64 real
+(hardware o VM con virtualización completa, no traducción binaria) para
+tratarlo como evidencia comparable a la corrida aarch64 de arriba.
+
+## Caso de padre muerto en reparentado (E2) — cerrado con hipótesis confirmada
+
+Se añadieron dos pruebas nuevas a `tests/escape/test_host_characterization.py`
+para cubrir el hueco explícito señalado arriba: qué pasa con el CPU de un
+hijo cuando el proceso que lo supervisaba muere **antes** de hacer `wait()`
+sobre él (reparentado, no el caso simple ya cubierto de padre vivo).
+
+**Hipótesis probada:** sin ningún mecanismo adicional, ese CPU es
+irrecuperable para la línea de proceso original; con
+`prctl(PR_SET_CHILD_SUBREAPER)` en un ancestro vivo, ese ancestro se vuelve
+el nuevo padre del huérfano en el momento del reparentado y sí puede
+recuperar su CPU completo vía `wait()`/`RUSAGE_CHILDREN`.
+
+**Resultado (misma corrida, Linux 6.11.11-linuxkit aarch64, 2026-08-18):**
+
+| Prueba | Resultado |
+|---|---|
+| `test_orphaned_grandchild_cpu_is_lost_without_subreaper` | OK — CPU del huérfano (~0.3s de cómputo) no aparece en `RUSAGE_CHILDREN` del proceso raíz; éste solo reap-ea a su hijo directo (el supervisor caído), no al nieto huérfano. |
+| `test_subreaper_recovers_orphaned_grandchild_cpu` | OK — con `PR_SET_CHILD_SUBREAPER=1`, el huérfano se reparenta al proceso raíz mismo; `os.wait4(-1, 0)` lo recoge directamente y su CPU sí se contabiliza. |
+
+Suite completa tras el cambio: **7 de 7 OK** (antes 5 de 5).
+
+**Qué mueve esto en E2:** el hueco deja de ser "sin probar" y pasa a ser
+"probado y con mitigación conocida". Si el diseño de ektel supervisa
+procesos con más de un nivel de profundidad (un supervisor que a su vez
+lanza hijos), **cualquier componente vivo destinado a contabilizar CPU debe
+declararse subreaper** (`prctl(PR_SET_CHILD_SUBREAPER)`) antes de lanzar esa
+jerarquía, o aceptar explícitamente que el CPU de huérfanos por caída de un
+nivel intermedio es una pérdida de contabilidad conocida, no un bug latente.
+
+**Qué NO prueba esto:** `PR_SET_CHILD_SUBREAPER` es Linux-only (no existe en
+Darwin); si el runtime debe soportar macOS en algún punto, este mecanismo no
+está disponible ahí y el hueco de padre-muerto persiste sin mitigación
+conocida en esa plataforma. Tampoco prueba el caso con más de un nivel de
+reparentado (huérfano de huérfano) ni con múltiples subreapers anidados.
