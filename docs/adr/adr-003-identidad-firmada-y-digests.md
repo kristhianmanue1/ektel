@@ -31,29 +31,36 @@ gestión de claves y confianza.
    `command_absolute` entre admisión e inicio, y efectos de modificación del
    host que ektel no aísla ni detecta.
 3. **Algoritmo de autenticación de la capacidad raíz: HMAC-SHA256** sobre
-   los bytes transportados (ADR-002), con clave simétrica del operador.
-   Razón: ADR-006 fija stdlib-only y la stdlib de Python no incluye firma
-   asimétrica (Ed25519). La capacidad raíz es emitida y verificada por el
-   mismo operador local (modelo de amenaza ADR-001: un host, un operador),
-   donde la asimetría no compra separación real de roles.
-4. **`invocation_proof` (PoP):** con HMAC, la posesión de la clave *es* la
+   la cadena base64 firmada del payload (ADR-002, corregido por F1), con
+   clave simétrica del operador. Razón primaria: el modelo de amenaza
+   (ADR-001: un host, un operador) no tiene separación real de roles que la
+   asimetría compruebe — emisor y verificador son el mismo operador. Razón
+   secundaria: ADR-006 fija stdlib-only y la stdlib de Python no incluye
+   firma asimétrica (Ed25519); esta razón es de herramientas y no sostiene
+   la decisión por sí sola (revisión externa 2026-08-19, F6).
+4. **Agilidad de algoritmo:** el sobre de capacidad lleva su propio campo
+   `alg` con versión (valor v1: `HS256`, cerrado y versionado). La futura
+   migración a firma asimétrica (ADR-003 §6: consumidor externo de
+   recibos, ADR-008) introduce un `alg` nuevo **sin** forzar una versión
+   mayor de `ActionRequest` (F6).
+5. **`invocation_proof` (PoP):** con HMAC, la posesión de la clave *es* la
    prueba; `invocation_proof` = HMAC independiente sobre
    `nonce + payload_digest`, de modo que el nonce quede ligado al descriptor
    concreto y no sea reusable con otro payload bajo la misma capacidad.
-5. **`identity_digest`:** `sha256` de los bytes transportados del descriptor
-   (incluye `artifact_identity_profile` y nonce). Dos serializaciones
+6. **`identity_digest`:** `sha256` de la cadena base64 firmada del payload
+   (ADR-002 §1.2, corregido por F1: ya no "bytes transportados" a secas).
+   Incluye `artifact_identity_profile` y nonce. Dos serializaciones
    distintas son identidades distintas (ADR-002, A4).
-6. **`admitted_action`:** valor opaco = `identity_digest + mac interno de
+7. **`admitted_action`:** valor opaco = `identity_digest + mac interno de
    admisión + expiry`, verificado de nuevo en `start` (integridad, vigencia,
    consumo único). El consumo se registra de forma durable junto al nonce
    (ADR-004), cerrando el intervalo admisión→inicio también tras reinicio.
-7. **Gestión de claves:** la clave raíz vive en un archivo del operador con
+8. **Gestión de claves:** la clave raíz vive en un archivo del operador con
    permisos `0600`, fuera del descriptor y de los eventos. Rotación =
    reemisión de capacidades; no hay jerarquía ni delegación (D2). Los
    eventos y resultados nunca registran la clave ni el HMAC completo: sólo
-   un identificador de clave (`key_id` = digest truncado de la clave
-   pública derivada… en modo simétrico, digest truncado de la clave con
-   sal de despliegue).
+   un identificador de clave (`key_id` = digest truncado de la clave con
+   sal de despliegue; en modo simétrico no existe clave pública derivable).
 
 ## 2. Motivación
 

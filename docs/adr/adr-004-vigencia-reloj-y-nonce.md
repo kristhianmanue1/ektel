@@ -23,13 +23,20 @@ delegable) y D3 (plazo efectivo truncado a `exp`).
    - **Reloj monotónico**: única referencia para plazos de supervisión,
      duraciones y precedencia deadline/presupuesto (propuesta §6.3); nunca
      se usa para interpretar claims de vigencia.
-2. **Truncamiento (D3):** el plazo efectivo de ejecución es
-   `min(deadline_solicitado, exp - now_wall)`; si `exp <= now_wall` la
-   admisión rechaza como capacidad expirada. Una capacidad que expira
-   durante la ejecución **no** interrumpe la ejecución en M0–M3; el
-   resultado registra la vigencia al admitir y la transición se reporta
-   como evento. (La interrupción a mitad de ejecución queda fuera: exige
-   revocación activa, excluida por D6.)
+2. **Truncamiento (D3) impuesto de verdad:** en admisión se computa
+   `exp_eff = exp` como **cota absoluta de pared** y
+   `deadline_eff = min(deadline_solicitado, exp - now_wall)` como duración;
+   si `exp <= now_wall` la admisión rechaza como capacidad expirada. El
+   supervisor aplica **ambas**: la duración en reloj monotónico desde el
+   arranque del proceso *y* la cota absoluta de pared `exp`; gana la más
+   temprana. Sin la cota absoluta, la ejecución terminaría hacia
+   `exp + Δ` donde Δ es la latencia admisión→inicio (fsync del replay
+   store, fsync del evento previo obligatorio, evaluación del PolicyPort) —
+   es decir, D3 no se impondría (revisión externa 2026-08-19, F2). Una
+   capacidad que expira durante la ejecución **no** interrumpe por revocación
+   activa (excluida por D6): la transición al alcanzar `exp` es
+   `deadline_exceeded` con `cause_code` cerrado de vigencia agotada, no una
+   revocación; el resultado registra la vigencia al admitir.
 3. **Tolerancia de skew declarada:** la validación de `nbf`/`exp` admite
    una tolerancia fija de despliegue (propuesta inicial: 30 s), registrada
    en el `GuaranteePlan`/evento de admisión. Supuesto declarado: el reloj
@@ -83,10 +90,13 @@ y se declara el supuesto de reloj disciplinado.
 
 ### D. Interrupción de la ejecución al expirar la capacidad
 
-En contra: **aplazada** — exige revocación activa y semántica de
-terminación por vigencia, fuera de M0–M3 (D6). El resultado declara la
-vigencia al admitir; la expiración durante ejecución se registra como
-evento observable, no como compuerta.
+En contra: **aplazada como revocación activa** — exige semántica de
+terminación por vigencia iniciada por el emisor, fuera de M0–M3 (D6).
+**Matiz introducido por F2 (revisión externa 2026-08-19):** la cota
+absoluta de pared en `exp` (§1.2) sí termina la ejecución al alcanzar
+`exp`, pero como `deadline_exceeded` por vigencia agotada — es la
+truncación de D3 aplicándose, no una revocación. La diferencia es de
+iniciador: nadie revoca; el plazo truncado simplemente vence.
 
 ## 4. Consecuencias
 

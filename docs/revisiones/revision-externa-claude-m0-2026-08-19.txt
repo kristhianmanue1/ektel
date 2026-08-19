@@ -1,0 +1,67 @@
+loqueantes para congelar contratos en M0
+
+F1 · Qué bytes se firman está sin cerrar, y la resolución obvia es la mala.
+adr-002:§1.2 dice "los bytes exactos recibidos"; adr-002:106 (A1) dice "los bytes de payload_b64 decodificados". adr-003:43 hereda la ambigüedad. Verifiqué con el intérprete del proyecto que cuatro sobres distintos byte a byte decodifican al mismo payload y validate=True acepta los cuatro:
+
+b'aGk=' b'aGl=' b'aGm=' b'aGn='  ->  todos b'hi'
+
+Firmar los bytes decodificados admite esa maleabilidad. Firmar el sobre completo es circular (hay que excluir el campo signature sin parsear). La resolución correcta es la tercera, que ninguno de los dos ADR contempla: firmar el texto base64 del payload, como hace JWS. Mata la maleabilidad, conserva verificar-antes-de-parsear, no necesita canonicalización, y identity_digest pasa a ser sha256 de esa misma cadena firmada. Base64 estricto se conserva como defensa en profundidad, ya no como pieza portante.
+
+F2 · La truncación de D3 no se impone, y fue una refutación de la ronda la que la desactivó.
+adr-004:27 fija el plazo efectivo en min(deadline_solicitado, exp - now_wall), computado en admisión. R10 refutó la objeción de doble descuento estableciendo que el deadline corre en reloj monotónico desde el arranque del proceso. Combinadas: la ejecución termina hacia exp + Δ, donde Δ es la latencia admisión→inicio.
+
+Δ no es despreciable por diseño: incluye el fsync del replay store (ADR-004), el fsync del evento previo obligatorio (ADR-007 fail-closed) y la evaluación del PolicyPort — que ADR-008 permite que sea un adaptador arbitrario con semántica de timeout. D3 está firmada por el dueño y dice "el plazo efectivo se trunca a exp"; el diseño resultante no lo hace. El arreglo es barato: llevar también una cota absoluta de pared y tomar la más temprana, o descontar Δ al arrancar.
+
+Altos
+
+F3 · La enmienda R1 colisiona con D3.
+R1 propone que terminate exija "la misma capacidad raíz vigente". Con truncación a exp, la capacidad muere justo cuando la acción alcanza su plazo — o sea, una terminación manual del operador cerca del deadline se rechaza como capability_rejected precisamente en el momento en que más se necesita. La terminación por deadline del propio supervisor no se ve afectada (no es iniciada por el llamador), lo que hace el defecto más difícil de notar en pruebas. Debe resolverse al redactar la enmienda, no después.
+
+F4 · R3 no tiene dónde vivir, y la asimetría de supervisión no tiene registro de decisión.
+No hay ADR que aloje: mecanismo de acotado de salida (R3 nombra tres rivales), período de gracia SIGTERM→SIGKILL, grupo de procesos vs. setsid, y si el supervisor se declara subreaper — decisión Linux-only que cambia la tabla de garantías de Darwin. Propongo ADR-009 acotado a eso.
+
+Medios
+
+F5 · "Independiente" no está definido, así que el bloqueador no es verificable. R5 exigió, con razón, una definición para los parsers; la ronda no la ofrece para sí misma. Tal como está, "ronda adversarial externa" no tiene criterio de aprobación y puede permanecer en el checkpoint indefinidamente.
+
+F6 · La razón primaria declarada para HMAC es de herramientas. ADR-003 da dos razones y pone primero la restricción de stdlib. La de modelo de amenaza es la defendible; la otra invierte el orden causal. Propuesta acotada, sin reabrir ADR-006: que el sobre de capacidad lleve su propio identificador de algoritmo/versión, de modo que la reapertura que ADR-003 §6 ya da por venir (consumidor externo de recibos — que es literalmente el objeto de ADR-008) no cascade en ActionRequest v2.
+
+F7 · C9 publica como claim de producto una magnitud que el producto no gobierna. La contabilidad de CPU es observed en el mejor caso, y D5/ADR-005 excluyen budget_exceeded de v1. Sacarla de "Claims" y dejarla donde ya está bien registrada: la evidencia E1/E2.
+
+Bajos
+
+F8 · Defectos editoriales dentro de cláusulas normativas. adr-003:54 conserva dos definiciones de key_id y unos puntos suspensivos de borrador; adr-006:124 dice "absternerse".
+
+Retirados o degradados en esta ronda
+
+- Mi crítica de método general → sustituida por F0, que es comprobable.
+- "M0 se auto-describe como preimplementación siendo código" → narrowed: la propuesta §13/§21 ya sabe que M0 es código. Lo que sobre-bloquea es la redacción del checkpoint, que lee como congelamiento total y alcanza también al código generador de evidencia, categoría que el propio proyecto ya autoriza (tests/escape/).
+- H8 tal como lo formulé → reemplazado por F7 sobre otra base.
+
+---
+4. Plan refinado
+
+Paso 0 · Corregir antes de firmar — F1, F2, F8. Son correcciones, no decisiones nuevas; consensuar documentos con F1 y F2 dentro convierte el defecto en norma.
+
+Paso 1 · Ronda cruzada entre ADR (F0) — objeto: las intersecciones, no los documentos. Es la ronda que falta y la que habría atrapado F1/F2. Barata y de alto rendimiento.
+
+Paso 2 · Spike de falsación acotado y desechable — separando honestamente sus dos productos: (i) hechos de plataforma sobre el parser/decodificador de la stdlib elegida — categoría legítima de evidencia, ya demostré dos: json.loads('{"a":1,"a":2}') devuelve {'a': 2} en silencio, y b64decode(validate=True) acepta bits de relleno no canónicos; (ii) vectores dorados. No lo llamo E5: no es una puerta empírica, porque qué se firma es una decisión, no un hecho.
+
+Paso 3 · ADR-009 (F4), absorbiendo R3; y R1 redactada resolviendo F3.
+
+Paso 4 · Fundir propuesta + ADR en especificación v1 versionada. Hoy hay dos fuentes normativas en conflicto: ADR-007 añadió query() al contrato del AuditSink y ADR-002 añadió la estructura del sobre; la propuesta de 2026-08-17 ya está desactualizada respecto de sus propios ADR.
+
+Paso 5 · Definir qué hace independiente a la ronda externa (F5) antes de invocarla como bloqueador.
+
+Paso 6 · Plataforma de despliegue: no como acto de decisión sino de secuenciación. Si se conoce, nómbrala. Si no, declárala desconocida y no profundices garantías por plataforma —es decir, ordena M2 después de saberlo, o acepta la recaracterización como costo asumido, que es lo que ADR-006 §4 ya dice.
+
+Después: consenso de los ADR corregidos → autorización de M0.
+
+---
+5. El mínimo irreducible (respuesta a X10)
+
+Si sólo se hiciera una cosa: F1 y F2. Son las dos únicas que, si se firman tal como están, quedan incrustadas en la identidad firmada y cuestan una versión mayor de schema arreglarlas después. Todo lo demás es corregible más tarde a costo lineal.
+
+Si tuviera que dejar caer algo de mi propia lista: F6 y F7, que son mejoras de higiene, no de corrección.
+
+Y lo que esta ronda no acredita: la ejecuté yo sobre mi propio texto. Cambió una recomendación de dirección (F1), reclasificó tres hallazgos y encontró uno nuevo (F0), lo cual sugiere que sirvió — pero es exactamente el tipo de auto-revisión cuya independencia el propio proyecto declara insuficiente.

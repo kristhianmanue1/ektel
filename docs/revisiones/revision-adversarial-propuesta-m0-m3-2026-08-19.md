@@ -32,9 +32,16 @@ enmienda a la propuesta; texto propuesto incluido).
 invocarlo. Tal cual está escrito, cualquier llamador que conozca un
 `action_id` podría terminar la acción de otro flujo del mismo despliegue.
 
-Enmienda propuesta a §7.1: "`terminate` exige la misma capacidad raíz
-vigente y el `action_id` ligado a ella; una terminación no autorizada se
-rechaza como `capability_rejected` y se registra como evento". Asignación:
+Enmienda propuesta a §7.1 (**reescrita tras la revisión externa
+2026-08-19, F3** — la redacción original exigía "la misma capacidad raíz
+vigente", lo que colisiona con D3: cerca del deadline la capacidad ya
+expiró y la terminación manual se rechazaría justo cuando más se necesita):
+"`terminate` se autoriza por la capacidad **tal como fue admitida para ese
+`action_id`**, ligada al evento de admisión durable: el derecho de
+terminación nace de la admisión y no caduca con la ejecución. Una
+terminación sin esa vinculación se rechaza como `capability_rejected` y se
+registra como evento. La terminación por deadline del propio supervisor no
+pasa por esta compuerta (no es iniciada por el llamador)." Asignación:
 anotar en la propuesta al formalizarla como especificación; no requiere ADR
 nuevo (es aplicación directa de D2).
 
@@ -128,6 +135,19 @@ La parada tras M3 es social, pero los contratos v1 no tienen dónde colgar
 routing, memoria ni delegación (D6), y toda extensión exige versión mayor de
 schema (§15.7). El scope creep tendría que romper dos gobernanzas a la vez.
 Ver también ADR-001 A3.
+
+## Criterio de independencia para la ronda externa (F5)
+
+La revisión externa de 2026-08-19 señaló (F5) que "ronda adversarial
+externa" no era verificable como bloqueador por no definir "independiente".
+Criterio adoptado: una ronda adversarial es **externa e independiente** si
+(1) la ejecuta un revisor distinto del autor de los documentos bajo
+revisión; (2) el revisor tuvo acceso al repositorio y a la evidencia, no
+sólo a una narrativa; y (3) produce hallazgos propios, numerados y
+comprobables, con retracciones declaradas. La ronda externa de Claude
+(2026-08-19, `revision-externa-claude-m0-2026-08-19.txt`) **cumple** este
+criterio: produjo ocho hallazgos verificables (dos críticos confirmados en
+intérprete) y declaró sus propias retracciones y límites.
 
 ## Síntesis
 

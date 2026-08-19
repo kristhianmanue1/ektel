@@ -21,8 +21,14 @@ propuesta §8.
 | C6 | Con `policy_mode=required`, ninguna acción inicia sin `Allow` del PolicyPort configurado. | ADR-008 |
 | C7 | Con auditoría obligatoria, el inicio falla cerrado si el evento previo no logra recibo `durable` (fsync de archivo y directorio). | ADR-007 |
 | C8 | La cadena de eventos por digest detecta modificación posterior. | §10.3.5 |
-| C9 | La contabilidad de CPU de hijos directos recogidos es recuperable en Linux vía `cutime/cstime`; en jerarquías multi-nivel, sólo si el supervisor se declara subreaper (Linux). | Evidencia E1/E2; ADR-006 |
 | C10 | Los contratos v1 son versionados, estrictos y verificables contra vectores dorados. | ADR-002 |
+
+*(La contabilidad de CPU se retiró de Claims por la revisión externa
+2026-08-19, F7: es una magnitud que el producto no gobierna —clase
+`observed` en el mejor caso— y v1 excluye `budget_exceeded`. Permanece
+registrada como evidencia E1/E2 y en la tabla de garantías por plataforma,
+no como claim de producto. El identificador C9 queda retirado, no
+reutilizado.)*
 
 ## No-claims (lo que ektel NO afirma)
 

@@ -121,7 +121,7 @@ Negativas / aceptadas:
   debe reflejarlo como limitación declarada, no como test falsamente verde
   (criterio de salida M2).
 - **x86_64 queda explícitamente sin afirmar.** Todo documento público debe
-  absternerse de "multiplataforma" sin calificador (coherente con §12.2 de
+  abstenerse de "multiplataforma" sin calificador (coherente con §12.2 de
   la propuesta).
 - **Riesgo de plataforma de producción desconocida:** si el despliegue real
   resulta x86_64 (u otro kernel/distro), la evidencia aarch64-linuxkit no
