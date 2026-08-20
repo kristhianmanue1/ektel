@@ -183,7 +183,7 @@ reemplazable y no forma parte del modelo de autorización.
    tras reiniciar el supervisor; no es una capacidad bearer persistible.
 
 El descriptor no contiene secretos (R2): los eventos registran el entorno
-sólo por digest o forma redactada (§10.4).
+sólo por digest o forma redactada (§10).
 
 ## 7. Vigencia, reloj y nonce (ADR-004, formaliza D2/D3)
 
@@ -486,7 +486,7 @@ puede cambiar la identidad firmada (cumplido con ADR-002/003).
 
 Propuesta §13 M1 sin cambios: parser estricto, identidad determinista,
 verificación de capacidad raíz, PoP, replay store con semántica de reinicio
-(§7.4–7.5), PolicyPort nulo y adaptador de prueba. Criterio: ningún caso
+(§7 puntos 4–5), PolicyPort nulo y adaptador de prueba. Criterio: ningún caso
 inválido inicia proceso; vectores criptográficos negativos pasan; fallos
 de dependencia requerida fail-closed; fuzzing sin aceptación ambigua.
 

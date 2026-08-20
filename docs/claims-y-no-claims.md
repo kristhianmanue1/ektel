@@ -16,7 +16,10 @@ Esta tabla es el lenguaje público permitido sobre ektel. Todo documento,
 README o integración que afirme algo fuera de "Claims" o niegue algo de
 "No-claims" contradice la gobernanza del proyecto. Las clases de garantía
 (`enforced` / `reactive` / `observed` / `unsupported`) son las de la
-propuesta §8.
+propuesta §8. Las referencias de la forma `§x.y` se resuelven contra la
+propuesta histórica
+(`docs/propuestas/propuesta-runtime-minimo-m0-m3-2026-08-17.md`) o la
+especificación v1.2, según el contexto de cada fila.
 
 ## Claims (lo que M0–M3 sí afirmará, una vez implementado y probado)
 
