@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ektel.local/contracts/schemas/v1/envelope.schema.json",
+  "title": "EktelSignedEnvelope v1",
+  "description": "Sobre firmado de estructura fija (spec v1.2 §5.2). La firma y el identity_digest se computan sobre los bytes ASCII de protected_header_b64 + \".\" + payload_b64 tal como viajan. base64url SIN padding; verificar MAC antes de decodificar; nunca re-serializar para verificar.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protected_header_b64", "payload_b64", "signature"],
+  "properties": {
+    "protected_header_b64": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "payload_b64": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    }
+  }
+}

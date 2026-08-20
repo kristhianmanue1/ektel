@@ -1,0 +1,40 @@
+{
+ "schema": "ektel/golden-vectors/v1",
+ "wire_type_group": "invocation-proof",
+ "generated": "2026-08-20",
+ "vectors": [
+  {
+   "id": "pop-valid-01",
+   "wire_type": "invocation-proof",
+   "description": "PoP válida para la capacidad dorada.",
+   "encoding": "base64",
+   "bytes": "eyJtYWMiOiIyMmYwOTFiOTgwM2RkYTQzNzFiN2MwYmU0YTQxMDI1MjhhMzg0MjAzYTdlZWI4NTczMDgzMzcwNzBkZjk5MGY3Iiwibm9uY2UiOiJhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMSIsInBheWxvYWRfZGlnZXN0IjoiYTdlZjk4MDc4YWI2YTQwYzAyODBhOWQ5NWY2NzhhMDUxZTQ5OTMyN2I4NTA1YWZjNGZhYjZlODczNmNjNTZjYiIsInNjaGVtYV92ZXJzaW9uIjoxfQ",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok"
+   }
+  },
+  {
+   "id": "pop-invalid-mac",
+   "wire_type": "invocation-proof",
+   "description": "MAC de PoP inválida.",
+   "encoding": "base64",
+   "bytes": "eyJtYWMiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwIiwibm9uY2UiOiJhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMSIsInBheWxvYWRfZGlnZXN0IjoiYTdlZjk4MDc4YWI2YTQwYzAyODBhOWQ5NWY2NzhhMDUxZTQ5OTMyN2I4NTA1YWZjNGZhYjZlODczNmNjNTZjYiIsInNjaGVtYV92ZXJzaW9uIjoxfQ",
+   "expect": {
+    "verdict": "reject",
+    "diagnostic": "bad_signature"
+   }
+  },
+  {
+   "id": "pop-invalid-nonce",
+   "wire_type": "invocation-proof",
+   "description": "Nonce de longitud distinta a 16 bytes.",
+   "encoding": "base64",
+   "bytes": "eyJtYWMiOiIyMmYwOTFiOTgwM2RkYTQzNzFiN2MwYmU0YTQxMDI1MjhhMzg0MjAzYTdlZWI4NTczMDgzMzcwNzBkZjk5MGY3Iiwibm9uY2UiOiJhMWExYTFhMWExYTFhMWExYTFhMWExYTFhMWExYTEiLCJwYXlsb2FkX2RpZ2VzdCI6ImE3ZWY5ODA3OGFiNmE0MGMwMjgwYTlkOTVmNjc4YTA1MWU0OTkzMjdiODUwNWFmYzRmYWI2ZTg3MzZjYzU2Y2IiLCJzY2hlbWFfdmVyc2lvbiI6MX0",
+   "expect": {
+    "verdict": "reject",
+    "diagnostic": "invalid_value"
+   }
+  }
+ ]
+}

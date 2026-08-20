@@ -1,0 +1,23 @@
+{
+ "schema": "ektel/golden-vectors-index/v1",
+ "generated": "2026-08-20",
+ "spec": "docs/especificacion/ektel-runtime-m0-m3-v1.md (v1.2)",
+ "groups": [
+  "action-request",
+  "admission-token",
+  "capability-envelope",
+  "invocation-proof",
+  "outcomes",
+  "termination-token"
+ ],
+ "test_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+ "test_key_notice": "CLAVE SOLO DE PRUEBA: fija para reproducibilidad de vectores; prohibida fuera de tests.",
+ "key_id": "3f6e0233dd1a4bde",
+ "domains": [
+  "ektel/capability/v1",
+  "ektel/pop/v1",
+  "ektel/admission/v1",
+  "ektel/termination/v1"
+ ],
+ "capability_identity_digest": "a7ef98078ab6a40c0280a9d95f678a051e499327b8505afc4fab6e8736cc56cb"
+}

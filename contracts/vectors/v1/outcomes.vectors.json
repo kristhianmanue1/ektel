@@ -1,0 +1,106 @@
+{
+ "schema": "ektel/golden-vectors/v1",
+ "wire_type_group": "outcomes",
+ "generated": "2026-08-20",
+ "vectors": [
+  {
+   "id": "aout-valid-admitted",
+   "wire_type": "admission-outcome",
+   "description": "Admitted con guarantee_plan.",
+   "encoding": "base64",
+   "bytes": "eyJhZG1pdHRlZF9hY3Rpb24iOiJvcGFxdWUiLCJndWFyYW50ZWVfcGxhbiI6W3siYXNzdW1wdGlvbnMiOlsiZ3J1cG8gZGUgcHJvY2Vzb3Mgb2JzZXJ2YWRvIl0sImNsYXNzIjoiZW5mb3JjZWQiLCJldmlkZW5jZV9yZWYiOiJkb2NzL2V2aWRlbmNpYS9jYXJhY3Rlcml6YWNpb24tbGludXgtMjAyNi0wOC0yMC5tZCIsImZhaWx1cmVfbW9kZSI6InN1cGVydmlzaW9uX2ZhaWxlZCIsImtub3duX2VzY2FwZXMiOlsiZGFlbW9uaXphY2lvbiBkb2JsZSBmb3JrIl0sIm1hZ25pdHVkZSI6InN1cGVydmlzaW9uIiwibWVjaGFuaXNtIjoia2lsbHBnICsgbW9ub3RvbmljIGRlYWRsaW5lIiwicGxhdGZvcm0iOiJsaW51eC1hYXJjaDY0In1dLCJpZGVudGl0eV9kaWdlc3QiOiJhN2VmOTgwNzhhYjZhNDBjMDI4MGE5ZDk1ZjY3OGEwNTFlNDk5MzI3Yjg1MDVhZmM0ZmFiNmU4NzM2Y2M1NmNiIiwib3V0Y29tZSI6ImFkbWl0dGVkIiwic2NoZW1hX3ZlcnNpb24iOjF9",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok"
+   }
+  },
+  {
+   "id": "aout-valid-rejected",
+   "wire_type": "admission-outcome",
+   "description": "AdmissionRejected con código cerrado.",
+   "encoding": "base64",
+   "bytes": "eyJvdXRjb21lIjoiYWRtaXNzaW9uX3JlamVjdGVkIiwicmVhc29uX2NvZGUiOiJjYXBhYmlsaXR5X2V4cGlyZWQiLCJyZXRyeWFibGUiOmZhbHNlLCJzYWZlX2RldGFpbCI6ImNhcGFiaWxpdHkgZXhwaXJhZGEiLCJzY2hlbWFfdmVyc2lvbiI6MX0",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok"
+   }
+  },
+  {
+   "id": "aout-invalid-budget",
+   "wire_type": "admission-outcome",
+   "description": "budget_exceeded no existe en v1 (§8.3).",
+   "encoding": "base64",
+   "bytes": "eyJvdXRjb21lIjoiYWRtaXNzaW9uX3JlamVjdGVkIiwicmVhc29uX2NvZGUiOiJidWRnZXRfZXhjZWVkZWQiLCJyZXRyeWFibGUiOmZhbHNlLCJzYWZlX2RldGFpbCI6ImNhcGFiaWxpdHkgZXhwaXJhZGEiLCJzY2hlbWFfdmVyc2lvbiI6MX0",
+   "expect": {
+    "verdict": "reject",
+    "diagnostic": "invalid_value"
+   }
+  },
+  {
+   "id": "sout-valid-started",
+   "wire_type": "start-outcome",
+   "description": "Started con referencia opaca de handle.",
+   "encoding": "base64",
+   "bytes": "eyJoYW5kbGVfcmVmIjoiMDEyMzQ1Njc4OWFiY2RlZiIsIm91dGNvbWUiOiJzdGFydGVkIiwic2NoZW1hX3ZlcnNpb24iOjF9",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok"
+   }
+  },
+  {
+   "id": "sout-valid-failed",
+   "wire_type": "start-outcome",
+   "description": "StartFailed con start_failed_indeterminate (C4).",
+   "encoding": "base64",
+   "bytes": "eyJvdXRjb21lIjoic3RhcnRfZmFpbGVkIiwicmVhc29uX2NvZGUiOiJzdGFydF9mYWlsZWRfaW5kZXRlcm1pbmF0ZSIsInNjaGVtYV92ZXJzaW9uIjoxfQ",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok"
+   }
+  },
+  {
+   "id": "sout-invalid-state",
+   "wire_type": "start-outcome",
+   "description": "Estado de ejecución en StartFailed: los tipos son por operación (C1).",
+   "encoding": "base64",
+   "bytes": "eyJvdXRjb21lIjoic3RhcnRfZmFpbGVkIiwicmVhc29uX2NvZGUiOiJleGVjdXRlZCIsInNjaGVtYV92ZXJzaW9uIjoxfQ",
+   "expect": {
+    "verdict": "reject",
+    "diagnostic": "invalid_value"
+   }
+  },
+  {
+   "id": "tout-valid-rejected",
+   "wire_type": "termination-outcome",
+   "description": "TerminationRejected por handle inválido.",
+   "encoding": "base64",
+   "bytes": "eyJvdXRjb21lIjoidGVybWluYXRpb25fcmVqZWN0ZWQiLCJyZWFzb25fY29kZSI6ImNhcGFiaWxpdHlfcmVqZWN0ZWQiLCJzY2hlbWFfdmVyc2lvbiI6MX0",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok"
+   }
+  },
+  {
+   "id": "eres-valid-executed",
+   "wire_type": "execution-result",
+   "description": "ExecutionResult executed con causa natural_exit.",
+   "encoding": "base64",
+   "bytes": "eyJhY3Rpb25faWQiOiJhY3Rpb24tMDAwMSIsImFydGlmYWN0X2lkZW50aXR5X3Byb2ZpbGUiOiJyb3V0ZV9tdXRhYmxlX3VudmVyaWZpZWQiLCJjYXVzZV9jb2RlIjoibmF0dXJhbF9leGl0IiwiZGlzY2FyZGVkX2J5dGVzIjowLCJkdXJhdGlvbl9tb25vdG9uaWNfbXMiOjgwMCwiZXhpdF9jb2RlX29yX3NpZ25hbCI6ImV4aXQ6MCIsImZpbmlzaGVkX2F0X3dhbGwiOjE3MzU2ODk2MDEsImd1YXJhbnRlZXNfYXBwbGllZCI6W3siYXNzdW1wdGlvbnMiOlsiZ3J1cG8gZGUgcHJvY2Vzb3Mgb2JzZXJ2YWRvIl0sImNsYXNzIjoiZW5mb3JjZWQiLCJldmlkZW5jZV9yZWYiOiJkb2NzL2V2aWRlbmNpYS9jYXJhY3Rlcml6YWNpb24tbGludXgtMjAyNi0wOC0yMC5tZCIsImZhaWx1cmVfbW9kZSI6InN1cGVydmlzaW9uX2ZhaWxlZCIsImtub3duX2VzY2FwZXMiOlsiZGFlbW9uaXphY2lvbiBkb2JsZSBmb3JrIl0sIm1hZ25pdHVkZSI6InN1cGVydmlzaW9uIiwibWVjaGFuaXNtIjoia2lsbHBnICsgbW9ub3RvbmljIGRlYWRsaW5lIiwicGxhdGZvcm0iOiJsaW51eC1hYXJjaDY0In1dLCJpZGVudGl0eV9kaWdlc3QiOiJhN2VmOTgwNzhhYjZhNDBjMDI4MGE5ZDk1ZjY3OGEwNTFlNDk5MzI3Yjg1MDVhZmM0ZmFiNmU4NzM2Y2M1NmNiIiwibGFzdF9ldmVudF9yZWNlaXB0IjoiIiwibWVhc3VyZW1lbnRzIjp7fSwic2NoZW1hX3ZlcnNpb24iOjEsInN0YXJ0ZWRfYXRfd2FsbCI6MTczNTY4OTYwMCwic3RhdGUiOiJleGVjdXRlZCIsInN0ZGVycl90cnVuY2F0aW9uIjpmYWxzZSwic3Rkb3V0X3RydW5jYXRpb24iOmZhbHNlLCJ2YWxpZGl0eV9hdF9hZG1pc3Npb24iOnsiZXhwIjoxNzk4NzYxNjAwLCJuYmYiOjE3MzU2ODk2MDB9fQ",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok"
+   }
+  },
+  {
+   "id": "eres-invalid-prestart",
+   "wire_type": "execution-result",
+   "description": "Estado pre-inicio en ExecutionResult: sólo post-inicio (C1).",
+   "encoding": "base64",
+   "bytes": "eyJhY3Rpb25faWQiOiJhY3Rpb24tMDAwMSIsImFydGlmYWN0X2lkZW50aXR5X3Byb2ZpbGUiOiJyb3V0ZV9tdXRhYmxlX3VudmVyaWZpZWQiLCJjYXVzZV9jb2RlIjoibmF0dXJhbF9leGl0IiwiZGlzY2FyZGVkX2J5dGVzIjowLCJkdXJhdGlvbl9tb25vdG9uaWNfbXMiOjgwMCwiZXhpdF9jb2RlX29yX3NpZ25hbCI6ImV4aXQ6MCIsImZpbmlzaGVkX2F0X3dhbGwiOjE3MzU2ODk2MDEsImd1YXJhbnRlZXNfYXBwbGllZCI6W3siYXNzdW1wdGlvbnMiOlsiZ3J1cG8gZGUgcHJvY2Vzb3Mgb2JzZXJ2YWRvIl0sImNsYXNzIjoiZW5mb3JjZWQiLCJldmlkZW5jZV9yZWYiOiJkb2NzL2V2aWRlbmNpYS9jYXJhY3Rlcml6YWNpb24tbGludXgtMjAyNi0wOC0yMC5tZCIsImZhaWx1cmVfbW9kZSI6InN1cGVydmlzaW9uX2ZhaWxlZCIsImtub3duX2VzY2FwZXMiOlsiZGFlbW9uaXphY2lvbiBkb2JsZSBmb3JrIl0sIm1hZ25pdHVkZSI6InN1cGVydmlzaW9uIiwibWVjaGFuaXNtIjoia2lsbHBnICsgbW9ub3RvbmljIGRlYWRsaW5lIiwicGxhdGZvcm0iOiJsaW51eC1hYXJjaDY0In1dLCJpZGVudGl0eV9kaWdlc3QiOiJhN2VmOTgwNzhhYjZhNDBjMDI4MGE5ZDk1ZjY3OGEwNTFlNDk5MzI3Yjg1MDVhZmM0ZmFiNmU4NzM2Y2M1NmNiIiwibGFzdF9ldmVudF9yZWNlaXB0IjoiIiwibWVhc3VyZW1lbnRzIjp7fSwic2NoZW1hX3ZlcnNpb24iOjEsInN0YXJ0ZWRfYXRfd2FsbCI6MTczNTY4OTYwMCwic3RhdGUiOiJhZG1pc3Npb25fcmVqZWN0ZWQiLCJzdGRlcnJfdHJ1bmNhdGlvbiI6ZmFsc2UsInN0ZG91dF90cnVuY2F0aW9uIjpmYWxzZSwidmFsaWRpdHlfYXRfYWRtaXNzaW9uIjp7ImV4cCI6MTc5ODc2MTYwMCwibmJmIjoxNzM1Njg5NjAwfX0",
+   "expect": {
+    "verdict": "reject",
+    "diagnostic": "invalid_value"
+   }
+  }
+ ]
+}

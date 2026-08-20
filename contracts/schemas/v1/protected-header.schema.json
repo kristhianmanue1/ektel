@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ektel.local/contracts/schemas/v1/protected-header.schema.json",
+  "title": "EktelProtectedHeader v1",
+  "description": "Protected header autenticado (spec v1.2 §5.2, §6.3). alg es lista cerrada: sólo HS256 en v1; no existe downgrade por sustitución de alg. typ identifica el wire type firmado.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["alg", "schema_version", "typ"],
+  "properties": {
+    "alg": { "const": "HS256" },
+    "schema_version": { "const": 1 },
+    "typ": {
+      "type": "string",
+      "enum": ["capability", "admission-token", "termination-token"]
+    }
+  }
+}

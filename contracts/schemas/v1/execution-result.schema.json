@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ektel.local/contracts/schemas/v1/execution-result.schema.json",
+  "title": "EktelExecutionResult v1",
+  "description": "Resultado post-inicio (spec v1.2 §8.3; propuesta §7.5). Sólo cuatro estados; budget_exceeded no existe en v1. executed no significa éxito de negocio. Clasificación por causa (C6): cause_code cerrado.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "action_id", "identity_digest", "state",
+    "artifact_identity_profile", "guarantees_applied"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "action_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "identity_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "state": { "enum": ["executed", "deadline_exceeded", "terminated", "supervision_failed"] },
+    "artifact_identity_profile": { "const": "route_mutable_unverified" },
+    "started_at_wall": { "type": "integer", "minimum": 0 },
+    "finished_at_wall": { "type": "integer", "minimum": 0 },
+    "duration_monotonic_ms": { "type": "integer", "minimum": 0 },
+    "exit_code_or_signal": { "type": "string" },
+    "cause_code": {
+      "enum": [
+        "natural_exit", "deadline_duration", "deadline_validity_exhausted",
+        "external_termination", "supervision_failure"
+      ]
+    },
+    "validity_at_admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nbf", "exp"],
+      "properties": {
+        "nbf": { "type": "integer", "minimum": 0 },
+        "exp": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "guarantees_applied": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["magnitude", "class", "platform", "mechanism", "assumptions", "known_escapes", "failure_mode", "evidence_ref"],
+        "properties": {
+          "magnitude": { "type": "string" },
+          "class": { "enum": ["enforced", "reactive", "observed", "unsupported"] },
+          "platform": { "type": "string" },
+          "mechanism": { "type": "string" },
+          "assumptions": { "type": "array", "items": { "type": "string" } },
+          "known_escapes": { "type": "array", "items": { "type": "string" } },
+          "failure_mode": { "type": "string" },
+          "evidence_ref": { "type": "string" }
+        }
+      }
+    },
+    "measurements": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "stdout_truncation": { "type": "boolean" },
+    "stderr_truncation": { "type": "boolean" },
+    "discarded_bytes": { "type": "integer", "minimum": 0 },
+    "last_event_receipt": { "type": "string" }
+  }
+}

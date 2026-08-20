@@ -54,10 +54,12 @@ La especificación M0–M3 v1.2 alcanzó consenso el 2026-08-20
 autorizado con alcance cerrado
 (`docs/decisiones/autorizacion-m0-2026-08-20.md`). La caracterización de
 plataforma ya se ejecutó en Darwin (5 tests + 3 skips Linux-only) y en Linux
-(8/8, `docs/evidencia/caracterizacion-linux-2026-08-20.md`). Sigue pendiente
-la **ampliación** de esa suite: durabilidad bajo fallo y RSS por muestreo
-(Y-1, Y-2). Hasta entonces no se promueven límites de recursos por acuerdo
-verbal.
+(8/8, `docs/evidencia/caracterizacion-linux-2026-08-20.md`). **M0 en curso** (snapshot 2026-08-20): `contracts/` ya contiene los wire
+schemas v1, 31 vectores dorados y dos parsers de referencia (uno clean-room,
+R5), con API etiquetada experimental; queda pendiente el cierre formal del
+hito. Sigue pendiente la **ampliación** de la suite de caracterización:
+durabilidad bajo fallo y RSS por muestreo. Hasta entonces no se promueven
+límites de recursos por acuerdo verbal.
 
 La [especificación M0–M3](docs/especificacion/ektel-runtime-m0-m3-v1.md)
 gobierna ese primer ciclo; M1 y posteriores no están autorizados.

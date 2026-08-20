@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ektel.local/contracts/schemas/v1/termination-outcome.schema.json",
+  "title": "EktelTerminationOutcome v1",
+  "description": "Resultado de terminate (spec v1.2 §8.3, B2). Una terminación sin handle válido produce TerminationRejected con capability_rejected, no un estado de ejecución.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "outcome"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "outcome": { "enum": ["termination_accepted", "termination_rejected"] },
+    "receipt": { "type": "string" },
+    "reason_code": { "enum": ["capability_rejected"] },
+    "safe_detail": { "type": "string", "maxLength": 512 }
+  }
+}

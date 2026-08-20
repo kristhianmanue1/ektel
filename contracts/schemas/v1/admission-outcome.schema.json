@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ektel.local/contracts/schemas/v1/admission-outcome.schema.json",
+  "title": "EktelAdmissionOutcome v1",
+  "description": "Resultado de admit (spec v1.2 §8.2, §8.3; C1). Discriminador cerrado: outcome. Códigos de rechazo cerrados y versionados; safe_detail nunca filtra secretos.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "outcome"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "outcome": { "enum": ["admitted", "admission_rejected"] },
+    "admitted_action": { "type": "string", "minLength": 1 },
+    "identity_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "policy_receipt": { "type": "string" },
+    "guarantee_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["magnitude", "class", "platform", "mechanism", "assumptions", "known_escapes", "failure_mode", "evidence_ref"],
+        "properties": {
+          "magnitude": { "type": "string" },
+          "class": { "enum": ["enforced", "reactive", "observed", "unsupported"] },
+          "platform": { "type": "string" },
+          "mechanism": { "type": "string" },
+          "assumptions": { "type": "array", "items": { "type": "string" } },
+          "known_escapes": { "type": "array", "items": { "type": "string" } },
+          "failure_mode": { "type": "string" },
+          "evidence_ref": { "type": "string" }
+        }
+      }
+    },
+    "reason_code": {
+      "enum": [
+        "malformed_descriptor", "capability_invalid", "capability_expired",
+        "capability_reused", "capability_rejected", "policy_denied",
+        "policy_unavailable", "audit_unavailable", "guarantee_unsupported"
+      ]
+    },
+    "safe_detail": { "type": "string", "maxLength": 512 },
+    "retryable": { "type": "boolean" },
+    "evidence_receipt": { "type": "string" }
+  }
+}

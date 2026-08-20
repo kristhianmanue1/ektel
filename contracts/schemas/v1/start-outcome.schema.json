@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ektel.local/contracts/schemas/v1/start-outcome.schema.json",
+  "title": "EktelStartOutcome v1",
+  "description": "Resultado de start (spec v1.2 §8.3, C1/C4). El handle es local, opaco y no serializable: en el wire type sólo aparece su referencia opaca (handle_ref) para correlación de eventos, nunca el token de terminación.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "outcome"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "outcome": { "enum": ["started", "start_failed"] },
+    "handle_ref": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "reason_code": {
+      "enum": ["start_failed", "start_failed_indeterminate", "capability_rejected"]
+    },
+    "safe_detail": { "type": "string", "maxLength": 512 }
+  }
+}

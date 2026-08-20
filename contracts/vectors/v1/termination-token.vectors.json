@@ -1,0 +1,41 @@
+{
+ "schema": "ektel/golden-vectors/v1",
+ "wire_type_group": "termination-token",
+ "generated": "2026-08-20",
+ "vectors": [
+  {
+   "id": "term-valid-01",
+   "wire_type": "termination-token",
+   "description": "Token de terminación válido.",
+   "encoding": "base64",
+   "bytes": "eyJwYXlsb2FkX2I2NCI6ImV5SmhZM1JwYjI1ZmFXUWlPaUpoWTNScGIyNHRNREF3TVNJc0ltbGtaVzUwYVhSNVgyUnBaMlZ6ZENJNkltRTNaV1k1T0RBM09HRmlObUUwTUdNd01qZ3dZVGxrT1RWbU5qYzRZVEExTVdVME9Ua3pNamRpT0RVd05XRm1ZelJtWVdJMlpUZzNNelpqWXpVMlkySWlMQ0p6WTJobGJXRmZkbVZ5YzJsdmJpSTZNWDAiLCJwcm90ZWN0ZWRfaGVhZGVyX2I2NCI6ImV5SmhiR2NpT2lKSVV6STFOaUlzSW5OamFHVnRZVjkyWlhKemFXOXVJam94TENKMGVYQWlPaUowWlhKdGFXNWhkR2x2YmkxMGIydGxiaUo5Iiwic2lnbmF0dXJlIjoiZTk2QUtab0VfWUlUbUtCNFZNUnhFVERVTlVPSXZjNjh5Uk1yZ1A5N2RmdyJ9",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok",
+    "identity_digest": "1a28ae51e1337355108346d7875119e360ea7f74ed1265fe59c6e12889b12415"
+   }
+  },
+  {
+   "id": "term-invalid-mac",
+   "wire_type": "termination-token",
+   "description": "MAC de terminación inválida.",
+   "encoding": "base64",
+   "bytes": "eyJwYXlsb2FkX2I2NCI6ImV5SmhZM1JwYjI1ZmFXUWlPaUpoWTNScGIyNHRNREF3TVNJc0ltbGtaVzUwYVhSNVgyUnBaMlZ6ZENJNkltRTNaV1k1T0RBM09HRmlObUUwTUdNd01qZ3dZVGxrT1RWbU5qYzRZVEExTVdVME9Ua3pNamRpT0RVd05XRm1ZelJtWVdJMlpUZzNNelpqWXpVMlkySWlMQ0p6WTJobGJXRmZkbVZ5YzJsdmJpSTZNWDAiLCJwcm90ZWN0ZWRfaGVhZGVyX2I2NCI6ImV5SmhiR2NpT2lKSVV6STFOaUlzSW5OamFHVnRZVjkyWlhKemFXOXVJam94TENKMGVYQWlPaUowWlhKdGFXNWhkR2x2YmkxMGIydGxiaUo5Iiwic2lnbmF0dXJlIjoiQVFFQkFRRUJBUUVCQVFFQkFRRUJBUUVCQVFFQkFRRUJBUUVCQVFFQkFRRSJ9",
+   "expect": {
+    "verdict": "reject",
+    "diagnostic": "bad_signature"
+   }
+  },
+  {
+   "id": "term-invalid-missing",
+   "wire_type": "termination-token",
+   "description": "Falta identity_digest.",
+   "encoding": "base64",
+   "bytes": "eyJwYXlsb2FkX2I2NCI6ImV5SmhZM1JwYjI1ZmFXUWlPaUpoWTNScGIyNHRNREF3TVNJc0luTmphR1Z0WVY5MlpYSnphVzl1SWpveGZRIiwicHJvdGVjdGVkX2hlYWRlcl9iNjQiOiJleUpoYkdjaU9pSklVekkxTmlJc0luTmphR1Z0WVY5MlpYSnphVzl1SWpveExDSjBlWEFpT2lKMFpYSnRhVzVoZEdsdmJpMTBiMnRsYmlKOSIsInNpZ25hdHVyZSI6ImlsRU5nTHdiOXNTZEJJaGZQZWN6SE1UaTdsb19PS2g3VnJvNzQ2WDlZSHcifQ",
+   "expect": {
+    "verdict": "reject",
+    "diagnostic": "missing_field"
+   }
+  }
+ ]
+}

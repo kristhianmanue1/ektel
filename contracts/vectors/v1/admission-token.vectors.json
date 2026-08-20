@@ -1,0 +1,41 @@
+{
+ "schema": "ektel/golden-vectors/v1",
+ "wire_type_group": "admission-token",
+ "generated": "2026-08-20",
+ "vectors": [
+  {
+   "id": "adm-valid-01",
+   "wire_type": "admission-token",
+   "description": "Token de admisión válido.",
+   "encoding": "base64",
+   "bytes": "eyJwYXlsb2FkX2I2NCI6ImV5SmhZM1JwYjI1ZmFXUWlPaUpoWTNScGIyNHRNREF3TVNJc0ltVjRjQ0k2TVRjNU9EYzJNVFl3TUN3aWFXUmxiblJwZEhsZlpHbG5aWE4wSWpvaVlUZGxaams0TURjNFlXSTJZVFF3WXpBeU9EQmhPV1E1TldZMk56aGhNRFV4WlRRNU9UTXlOMkk0TlRBMVlXWmpOR1poWWpabE9EY3pObU5qTlRaallpSXNJbWx6YzNWbGNsOXBaQ0k2SW05d1pYSmhkRzl5TFdSbGRpSXNJbk5qYUdWdFlWOTJaWEp6YVc5dUlqb3hmUSIsInByb3RlY3RlZF9oZWFkZXJfYjY0IjoiZXlKaGJHY2lPaUpJVXpJMU5pSXNJbk5qYUdWdFlWOTJaWEp6YVc5dUlqb3hMQ0owZVhBaU9pSmhaRzFwYzNOcGIyNHRkRzlyWlc0aWZRIiwic2lnbmF0dXJlIjoic2Z0UkwwbzZ2N0xmWWlOYmx0UEZTcC1FU1l2VUVPX3RVdmx5V25WVzRjOCJ9",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok",
+    "identity_digest": "855cfebde140d35981b19e2a8fae1f77c73215dd17879af1e0942c221466a080"
+   }
+  },
+  {
+   "id": "adm-invalid-mac",
+   "wire_type": "admission-token",
+   "description": "MAC de admisión inválida.",
+   "encoding": "base64",
+   "bytes": "eyJwYXlsb2FkX2I2NCI6ImV5SmhZM1JwYjI1ZmFXUWlPaUpoWTNScGIyNHRNREF3TVNJc0ltVjRjQ0k2TVRjNU9EYzJNVFl3TUN3aWFXUmxiblJwZEhsZlpHbG5aWE4wSWpvaVlUZGxaams0TURjNFlXSTJZVFF3WXpBeU9EQmhPV1E1TldZMk56aGhNRFV4WlRRNU9UTXlOMkk0TlRBMVlXWmpOR1poWWpabE9EY3pObU5qTlRaallpSXNJbWx6YzNWbGNsOXBaQ0k2SW05d1pYSmhkRzl5TFdSbGRpSXNJbk5qYUdWdFlWOTJaWEp6YVc5dUlqb3hmUSIsInByb3RlY3RlZF9oZWFkZXJfYjY0IjoiZXlKaGJHY2lPaUpJVXpJMU5pSXNJbk5qYUdWdFlWOTJaWEp6YVc5dUlqb3hMQ0owZVhBaU9pSmhaRzFwYzNOcGIyNHRkRzlyWlc0aWZRIiwic2lnbmF0dXJlIjoiX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fOCJ9",
+   "expect": {
+    "verdict": "reject",
+    "diagnostic": "bad_signature"
+   }
+  },
+  {
+   "id": "adm-invalid-digest",
+   "wire_type": "admission-token",
+   "description": "identity_digest no hex de 64.",
+   "encoding": "base64",
+   "bytes": "eyJwYXlsb2FkX2I2NCI6ImV5SmhZM1JwYjI1ZmFXUWlPaUpoWTNScGIyNHRNREF3TVNJc0ltVjRjQ0k2TVRjNU9EYzJNVFl3TUN3aWFXUmxiblJwZEhsZlpHbG5aWE4wSWpvaWVucDZlbnA2ZW5wNmVucDZlbnA2ZW5wNmVucDZlbnA2ZW5wNmVucDZlbnA2ZW5wNmVucDZlbnA2ZW5wNmVucDZlbnA2ZW5wNmVucDZlbnA2ZW5wNmVpSXNJbWx6YzNWbGNsOXBaQ0k2SW05d1pYSmhkRzl5TFdSbGRpSXNJbk5qYUdWdFlWOTJaWEp6YVc5dUlqb3hmUSIsInByb3RlY3RlZF9oZWFkZXJfYjY0IjoiZXlKaGJHY2lPaUpJVXpJMU5pSXNJbk5qYUdWdFlWOTJaWEp6YVc5dUlqb3hMQ0owZVhBaU9pSmhaRzFwYzNOcGIyNHRkRzlyWlc0aWZRIiwic2lnbmF0dXJlIjoiOGMyNm50QTJlWlExR0VTNXhDQ3JIdlpCeDhseE90T1FXc2Eyb19WUDhLbyJ9",
+   "expect": {
+    "verdict": "reject",
+    "diagnostic": "invalid_value"
+   }
+  }
+ ]
+}
