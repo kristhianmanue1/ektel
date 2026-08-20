@@ -1,6 +1,8 @@
 # Propuesta de arquitectura: runtime mínimo M0–M3
 
-**Estado:** propuesta no vinculante para revisión y consenso.
+**Estado:** fusionada en `docs/especificacion/ektel-runtime-m0-m3-v1.md`
+(2026-08-19). Este documento queda como antecedente histórico; la fuente
+normativa es la especificación.
 
 **Fecha:** 2026-08-17.
 
