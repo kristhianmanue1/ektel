@@ -42,13 +42,22 @@ delegable) y D3 (plazo efectivo truncado a `exp`).
    en el `GuaranteePlan`/evento de admisión. Supuesto declarado: el reloj
    de pared del host está disciplinado (NTP) y un administrador del host
    está fuera del modelo de amenaza (propuesta §12.2).
-4. **Replay store durable y obligatorio:** los nonces consumidos se
-   persisten antes de admitir (append con fsync de archivo y directorio,
-   perfil `posix-fsync-dir/v1`, el mismo que ya usa AN-KLA en este
-   repositorio). El store **sobrevive reinicios** del runtime; un nonce
-   permanece reservado hasta `exp + tolerancia` de su capacidad.
-   Semántica de reinicio: tras reiniciar, el store cargado sigue rechazando
-   replays; no hay ventana de replay por reinicio.
+4. **Replay store durable y obligatorio, con dos registros distintos
+   (ronda correctiva 2026-08-19, B3):**
+   - `nonce_reservation`: CAS durable **durante `admit`** — el nonce se
+     reserva antes de emitir la admisión (append con fsync de archivo y
+     directorio, perfil `posix-fsync-dir/v1` con la corrección por
+     plataforma de ADR-007 punto 3). Un nonce permanece reservado hasta
+     `exp + tolerancia` de su capacidad.
+   - `start_token_consumption`: CAS durable **inmediatamente antes de
+     crear el proceso** — el `admitted_action` se gasta en `start`, no en
+     `admit`. El CAS cierra la carrera entre dos `start` concurrentes:
+     sólo uno gana.
+   Un crash después del CAS de consumo y antes del spawn deja el token
+   gastado y produce ausencia/fallo recuperable (propuesta §11); **nunca
+   habilita replay**. El store **sobrevive reinicios** del runtime: tras
+   reiniciar, ambos registros cargados siguen rechazando replays; no hay
+   ventana de replay por reinicio.
 5. **Fail-closed:** si el replay store no está disponible o no puede
    persistir, la admisión rechaza. No existe modo en memoria en despliegue;
    un store en memoria sólo se permite en pruebas.

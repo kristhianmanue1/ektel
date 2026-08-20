@@ -1,0 +1,111 @@
+Veredicto
+PARCIAL / NO-GO para consensuar la especificación o autorizar M0.
+El trabajo realizado desde 9f41fbf tiene mucho valor: convirtió una propuesta general en un paquete trazable de evidencia, nueve ADR, decisiones y una especificación candidata. Pero la fusión consolidó contradicciones contractuales que deben resolverse antes de congelar v1.
+No recomiendo revertir los once commits. Recomiendo tratarlos como una excelente base candidata y abrir una ronda correctiva transversal.
+Estado verificado
+- Rango auditado: 11 commits, 9f41fbf..3f9ea06.
+- Cambios: 2,586 líneas, principalmente documentación, pruebas de caracterización y un script Linux.
+- Git: árbol limpio; main coincide con su referencia local origin/main.
+- Pruebas actuales en Darwin: 5 passed, 3 skipped, no “8 pruebas pasadas”.
+- AN-KLA: íntegro, revisión 15; sus afirmaciones siguen siendo contexto no autoritativo.
+- No existe runtime, wire schemas implementados ni CI. El proyecto sigue en preimplementación.
+- La especificación reconoce correctamente que no autoriza M0 ([especificación (line 27)](/Users/krisnova/www/aria/ektel/docs/especificacion/ektel-runtime-m0-m3-v1.md:27)).
+Lo mejor del trabajo
+1. La evidencia Linux es honesta: limita resultados a linuxkit aarch64 y rechaza Rosetta como sustituto de x86_64 real.
+2. La separación entre garantías enforced, reactive, observed y unsupported es buena.
+3. CAGF permanece fuera del núcleo, como adaptador externo del PolicyPort.
+4. Se retiró correctamente CPU como claim gobernado.
+5. Se conservaron TOCTOU, ausencia de resultado, escape por setsid y límites de plataforma como no-claims.
+6. La especificación mantiene la parada deliberada en M3.
+7. B1 quedó bien corregido: el MAC cubre el texto base64 transportado, no el payload decodificado.
+Bloqueantes encontrados
+B1 — Los recibos tienen dos contratos incompatibles
+ADR-007 aplaza expresamente la firma de recibos: el recibo contiene digests, pero no MAC ([ADR-007 (line 52)](/Users/krisnova/www/aria/ektel/docs/adr/adr-007-auditsink-durabilidad-y-recibos.md:52)).
+Sin embargo:
+- la especificación dice que el recibo es verificable localmente mediante HMAC ([especificación (line 294)](/Users/krisnova/www/aria/ektel/docs/especificacion/ektel-runtime-m0-m3-v1.md:294));
+- N8 afirma que capacidades y recibos usan HMAC ([claims (line 56)](/Users/krisnova/www/aria/ektel/docs/claims-y-no-claims.md:56));
+- N14 afirma que filtrar la clave permite fabricar eventos y recibos ([claims (line 62)](/Users/krisnova/www/aria/ektel/docs/claims-y-no-claims.md:62)).
+Estas tres afirmaciones no pueden coexistir con ADR-007.
+Además, una cadena hash sin un encabezado o recibo confiable separado sólo verifica consistencia interna. Un atacante capaz de reescribir todo el almacén puede recalcular la cadena; por tanto, C8 —“detecta modificación posterior”— es demasiado absoluto.
+Propuesta: elegir explícitamente una de dos opciones:
+- v1 mínima: recibos sin MAC; C8 pasa a “detecta enlaces rotos respecto de un head confiable” y N14 deja de atribuir a la clave capacidad para fabricar recibos;
+- v1 autenticada: añadir MAC del recibo con clave separada, dominio criptográfico, campos cubiertos, rotación y head confiable.
+Para el runtime mínimo recomiendo la primera.
+B2 — terminate exige autoridad que su interfaz no recibe
+La API dice:
+terminate(ActionId, TerminationReason)
+pero la prosa exige demostrar la capacidad admitida para ese action_id ([especificación (line 168)](/Users/krisnova/www/aria/ektel/docs/especificacion/ektel-runtime-m0-m3-v1.md:168)).
+Con sólo ActionId no existe material para autenticar al llamador. El contrato no puede implementar la regla que promete.
+Propuesta:
+terminate(ExecutionHandle, TerminationReason)
+donde el handle contenga un token opaco de terminación, o introducir TerminationAuthorization explícito.
+B3 — Se confunden reserva de nonce y consumo de admitted_action
+El documento afirma simultáneamente:
+- que el nonce se persiste antes de admitir;
+- que admitted_action es de un solo uso en start;
+- que “el consumo se registra durable junto al nonce” ([especificación (line 129)](/Users/krisnova/www/aria/ektel/docs/especificacion/ektel-runtime-m0-m3-v1.md:129)).
+Si el token se consume durante admit, no puede consumirse en start. Si se consume en start, faltan atomicidad, carrera entre dos start, recuperación tras crash y orden respecto de spawn.
+Propuesta: separar dos registros:
+1. nonce_reservation, CAS durable durante admit;
+2. start_token_consumption, CAS durable inmediatamente antes de crear el proceso.
+Un crash después del CAS y antes de spawn debe dejar el token gastado y producir ausencia/fallo recuperable, nunca habilitar replay.
+B4 — C2 promete más identidad de la que existe
+C2 afirma que la autorización queda “vinculada a la ejecución”, pero el perfil aceptado sólo autentica el descriptor y la ruta; el ejecutable puede cambiar antes de exec ([claims (line 20)](/Users/krisnova/www/aria/ektel/docs/claims-y-no-claims.md:20), [D7a (line 39)](/Users/krisnova/www/aria/ektel/docs/decisiones/consenso-D1-D7-2026-08-18.md:39)).
+Un no-claim posterior no debe corregir un claim fuerte.
+Redacción propuesta:
+La autorización queda vinculada al descriptor admitido y a la ruta declarada; no a la identidad del contenido finalmente ejecutado.
+
+B5 — El sobre no autentica alg y faltan dominios criptográficos
+El MAC cubre únicamente payload_b64; alg queda fuera ([ADR-002 (line 24)](/Users/krisnova/www/aria/ektel/docs/adr/adr-002-wire-format-y-canonicalizacion.md:24)). En v1 sólo se acepta HS256, por lo que hoy no hay downgrade inmediato, pero la prometida “agilidad sin ActionRequest v2” queda insegura o, como mínimo, indefinida.
+También se describen varios HMAC —capacidad, PoP y token admitido— sin separación de claves ni prefijos de dominio. nonce + payload_digest tampoco define una codificación inequívoca.
+Propuesta:
+- autenticar protected_header_b64 + "." + payload_b64;
+- derivar claves o usar prefijos cerrados: ektel/capability/v1, ektel/pop/v1, ektel/admission/v1;
+- codificar componentes con longitudes o estructura binaria inequívoca;
+- exigir envelope v2 para cambiar de familia criptográfica.
+B6 — La mecánica de salida sigue abierta dentro de un ADR “aceptado”
+ADR-009 dice primero “deja de leer”; su ronda adversarial después deja para M2 elegir entre cerrar el pipe o drenar y descartar ([ADR-009 (line 22)](/Users/krisnova/www/aria/ektel/docs/adr/adr-009-mecanica-de-supervision.md:22), [ronda (line 109)](/Users/krisnova/www/aria/ektel/docs/adr/adr-009-mecanica-de-supervision.md:109)).
+Esos comportamientos no son equivalentes:
+- cerrar el pipe puede matar o alterar al proceso mediante SIGPIPE;
+- dejar de leer puede bloquearlo;
+- drenar y descartar preserva progreso con memoria acotada.
+Recomiendo drenar y descartar después del límite, marcando truncamiento y conteo descartado. Debe quedar decidido antes de congelar el contrato.
+También debe aclararse si la gracia SIGTERM→SIGKILL forma parte del deadline total o empieza después. Hoy se adelanta SIGTERM, reduciendo silenciosamente el tiempo útil del proceso.
+B7 — valid_until no puede delegarse completamente al adaptador
+N16 afirma que Ektel no valida si el adaptador honra valid_until. Pero el campo forma parte de Allow; aceptar un Allow ya expirado es una decisión del núcleo, no “corrección de política externa” ([PolicyDecision (line 390)](/Users/krisnova/www/aria/ektel/docs/propuestas/propuesta-runtime-minimo-m0-m3-2026-08-17.md:390)).
+Propuesta:
+- el adaptador decide la política;
+- el núcleo valida forma, identidad de decisión, vigencia y timeout de la respuesta;
+- un Allow expirado o recibido fuera del plazo se convierte en Indeterminate/rechazo cuando el puerto sea requerido.
+B8 — B2 de durabilidad fue mitigado, pero no probado
+El nuevo test sólo comprueba que fsync/F_FULLFSYNC pueden invocarse sobre un archivo temporal ([test (line 204)](/Users/krisnova/www/aria/ektel/tests/escape/test_host_characterization.py:204)). No prueba:
+- fsync del directorio;
+- orden del protocolo de creación/rename;
+- recuperación tras crash;
+- supervivencia a corte eléctrico;
+- comportamiento del dispositivo real.
+Apple documenta que F_FULLFSYNC solicita al dispositivo vaciar datos, pero también advierte que ciertos dispositivos pueden ignorarlo. Linux documenta que fsync espera la confirmación del dispositivo y que el directorio requiere sincronización separada. Apple fcntl(2), Linux fsync(2).
+Propuesta: definir durable como “protocolo de plataforma completado bajo supuestos declarados”, no como supervivencia demostrada. Renombrar la prueba a flush_primitive_available y reservar la validación del protocolo completo para M3.
+Divergencia estratégica respecto del encargo inicial
+El diseño actual es internamente un runtime local de procesos, pero ya no corresponde literalmente a P0–P3 del encargo original:
+- routing quedó excluido;
+- before_action/after_action fueron descartados como interfaz principal;
+- auditoría puede ser opcional;
+- el encargo original pedía P3 obligatorio para todas las acciones.
+Esto puede ser una decisión válida, pero debe existir un acta explícita que diga:
+Ektel no implementará P0–P3 literalmente; adopta M0–M3 con esta frontera y estas divergencias.
+
+Sin esa reconciliación, el proyecto puede estar bien diseñado y, aun así, resolver otro problema.
+Defecto de gobernanza
+ADR-007 fue modificado después del commit que aceptó ADR-001…009. La tabla posterior fue aceptada con “adelante”, pero no existe un acta explícita de enmienda de ADR-007. La especificación fusionada todavía es candidata, por lo que puede absorber la corrección, pero no debe afirmarse que todos los requisitos salvo autorización M0 están cerrados.
+Tampoco pude verificar directamente en el material pegado los mensajes históricos “autorizado” y “aprobados todos los ADR”; sólo están declarados en el acta ([acta ADR (line 25)](/Users/krisnova/www/aria/ektel/docs/decisiones/consenso-adr-001-009-2026-08-19.md:25)). El “adelante” de la tabla sí aparece en el texto aportado.
+Ruta propuesta
+Antes de pedir consenso global:
+1. Emitir una revisión transversal v2 con B1–B8.
+2. Crear enmiendas acotadas para ADR-002/003/004/007/008/009.
+3. Corregir la tabla pública mediante acta de enmienda, no edición silenciosa.
+4. Regenerar la especificación fusionada desde esas decisiones.
+5. Ejecutar una segunda revisión externa centrada en estados, atomicidad y límites de confianza.
+6. Obtener aceptación explícita de la especificación corregida.
+7. Sólo después presentar la autorización separada de M0.
+No recomiendo implementar todavía. Tampoco recomiendo borrar el trabajo: aproximadamente el 75–80 % es una base sólida; los defectos están concentrados en intersecciones críticas y pueden corregirse documentalmente antes de crear schemas.

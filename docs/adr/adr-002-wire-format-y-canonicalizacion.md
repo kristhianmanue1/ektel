@@ -21,21 +21,26 @@ versionados.
    duplicados de clave, campos desconocidos (salvo extensión versionada
    explícita), tipos coercionados y documentos que excedan los límites de
    tamaño declarados por tipo.
-2. **Firma sobre el texto base64 del payload, sin canonicalización
-   (estilo JWS):** el sobre v1 tiene estructura fija de nivel superior
-   `{payload_b64, signature, alg}`; la firma y el `identity_digest` se
-   computan sobre la **cadena de caracteres base64 del payload tal como
-   viaja** (los bytes ASCII de `payload_b64`), no sobre los bytes
-   decodificados ni sobre el sobre completo. El receptor localiza la firma
-   con un parseo superficial que no interpreta el payload, verifica
+2. **Firma sobre el protected header y el texto base64 del payload, sin
+   canonicalización (estilo JWS):** el sobre v1 tiene estructura fija de
+   nivel superior `{protected_header_b64, payload_b64, signature}`; la
+   firma y el `identity_digest` se computan sobre los bytes ASCII de
+   `protected_header_b64 + "." + payload_b64` **tal como viajan** — no
+   sobre los bytes decodificados ni sobre el sobre completo. El protected
+   header contiene `alg` y `schema_version`, de modo que el algoritmo
+   queda **autenticado** (ronda correctiva 2026-08-19, B5: `alg` fuera del
+   MAC dejaba la agilidad prometida indefinida). El receptor localiza la
+   firma con un parseo superficial que no interpreta el payload, verifica
    **antes** de decodificar y nunca re-serializa para verificar.
    Razón (revisión externa 2026-08-19, F1): firmar los bytes decodificados
    admite maleabilidad del relleno base64 — cuatro sobres distintos byte a
    byte pueden decodificar al mismo payload — y firmar el sobre completo es
-   circular. Firmar el texto base64 mata la maleabilidad, conserva
-   verificar-antes-de-parsear y no necesita canonicalización. El decodificado
-   base64 estricto (`validate=True` o equivalente) se mantiene como defensa
-   en profundidad, ya no como pieza portante.
+   circular. Firmar `header.payload` mata la maleabilidad, autentica `alg`,
+   conserva verificar-antes-de-parsear y no necesita canonicalización. El
+   decodificado base64 estricto (`validate=True` o equivalente) se mantiene
+   como defensa en profundidad, ya no como pieza portante. Cambiar de
+   familia criptográfica (p. ej. a firma asimétrica) exige **envelope v2**,
+   no sólo un `alg` nuevo (B5).
 3. **Ningún esquema de canonicalización JSON (JCS u otro) entra en v1.** La
    canonicalización existe sólo como concepto interno de pruebas (vectores
    dorados), no como requisito del productor ni del verificador.
@@ -114,7 +119,7 @@ reabrir D4 requiere un acto de consenso nuevo, no este ADR.
 
 | # | Ataque | Resultado |
 |---|---|---|
-| A1 | Verificar firma antes de parsear exige que el sobre firme/verifique sin entender el contenido: ¿cómo se localiza la firma sin parsear? | **Incorporada:** el sobre v1 tiene estructura fija de nivel superior (`payload_b64`, `signature`, `alg`) localizable con un parseo superficial que no interpreta el payload. **Corregida por la revisión externa 2026-08-19 (F1):** la firma cubre la cadena base64 del payload tal como viaja (estilo JWS), no los bytes decodificados — la redacción original admitía maleabilidad de relleno base64, verificada en intérprete. |
+| A1 | Verificar firma antes de parsear exige que el sobre firme/verifique sin entender el contenido: ¿cómo se localiza la firma sin parsear? | **Incorporada:** el sobre v1 tiene estructura fija de nivel superior (`protected_header_b64`, `payload_b64`, `signature`) localizable con un parseo superficial que no interpreta el payload. **Corregida por F1 (2026-08-19):** la firma cubre la cadena base64 del payload tal como viaja, no los bytes decodificados. **Corregida por B5 (ronda correctiva 2026-08-19):** la firma cubre `protected_header_b64 + "." + payload_b64`, autenticando `alg`; la estructura anterior `{payload_b64, signature, alg}` dejaba el algoritmo sin autenticar. |
 | A2 | Base64 del payload añade ~33 % de tamaño. | **Refutada:** los descriptores son pequeños (KB) y los límites de tamaño ya están presupuestados; el costo no justifica un sobre binario nuevo. |
 | A3 | Rechazo de claves duplicadas depende de cada parser; un parser laxo en otra implementación rompe la equivalencia. | **Incorporada:** los vectores dorados incluyen casos de claves duplicadas y todo parser de referencia debe rechazarlos para cumplir el criterio de salida de M0. |
 | A4 | "Sin canonicalización" impide comparar identidades semánticas entre sistemas. | **Refutada:** la identidad de ejecución es del descriptor concreto; la comparación semántica pertenece a analítica fuera del núcleo. |

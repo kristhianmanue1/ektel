@@ -19,6 +19,15 @@ si PolicyPort es omitible o requerido por perfil de despliegue (§20).
    `PolicyPort.evaluate(PolicyEvaluationRequest) -> PolicyDecision` con
    tres decisiones tipadas (`Allow`, `Deny`, `Indeterminate`) y la regla:
    `Indeterminate` se trata como rechazo cuando la política sea obligatoria.
+   **División de validación (ronda correctiva 2026-08-19, B7):** la
+   *corrección* de la política es del adaptador, pero la validación del
+   **sobre de respuesta** es del núcleo: forma del `PolicyDecision`,
+   `decision_id` presente, vigencia (`valid_until` contra el reloj de
+   pared con la tolerancia declarada de ADR-004) y recepción dentro del
+   timeout de la llamada. Un `Allow` expirado o recibido fuera de plazo se
+   convierte en `Indeterminate` — y por tanto en rechazo cuando el puerto
+   sea requerido. Aceptar un `Allow` ya expirado sería una decisión del
+   núcleo, no «corrección de política externa».
 2. **Omitible o requerido es propiedad del perfil de despliegue declarado,
    no una flag opaca:** el despliegue publica un *deployment profile* con
    `policy_mode ∈ {absent, optional, required}` y

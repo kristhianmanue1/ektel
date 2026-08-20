@@ -41,13 +41,19 @@ AuditSink y formato de recibo (propuesta §20).
    `posix-fsync-dir/v1`, el mismo adoptado por AN-KLA en este repositorio),
    con corrección por plataforma: en Darwin `fsync()` no vacía la caché
    del disco y el sink debe usar `fcntl(F_FULLFSYNC)`; en Linux el fsync
-   estándar basta (base documental clase D, caracterización de API en
-   `tests/escape/test_host_characterization.py::test_durable_receipt_flush_platform_semantics`).
-   La supervivencia real a corte de energía no es testeable sin hardware:
-   es supuesto declarado (N5 de la tabla pública), no evidencia. El perfil
-   `posix-fsync-dir/v1` de AN-KLA tiene la misma limitación en macOS; se
-   declara aquí sin modificar AN-KLA. Sinks que no puedan demostrar
-   durabilidad sólo pueden emitir `accepted_undemonstrated`.
+   estándar basta (base documental clase D, disponibilidad de la primitiva
+   caracterizada en
+   `tests/escape/test_host_characterization.py::test_flush_primitive_available`).
+   **`durable` significa "protocolo de plataforma completado bajo
+   supuestos declarados", no supervivencia demostrada** (ronda correctiva
+   2026-08-19, B8): el protocolo completo — fsync del directorio, orden
+   creación/rename, recuperación tras crash y comportamiento del
+   dispositivo real — se valida en M3; Apple advierte que ciertos
+   dispositivos pueden ignorar `F_FULLFSYNC`, y la supervivencia a corte
+   eléctrico no es testeable sin hardware (supuesto declarado, N5). El
+   perfil `posix-fsync-dir/v1` de AN-KLA tiene la misma limitación en
+   macOS; se declara aquí sin modificar AN-KLA. Sinks que no puedan
+   demostrar durabilidad sólo pueden emitir `accepted_undemonstrated`.
 
 4. **Fail-closed:** cuando el despliegue declare auditoría obligatoria, un
    evento previo al inicio que no logra recibo `durable` rechaza el inicio
@@ -55,11 +61,22 @@ AuditSink y formato de recibo (propuesta §20).
    produce brecha explícita (`audit_gap_detected` o ausencia declarada);
    nunca se rellena retrospectivamente (§10.3.6).
 
-5. **Recibo v1:** `{receipt_version, event_id, event_digest,
+5. **Recibo v1 (sin MAC — ronda correctiva 2026-08-19, B1):**
+   `{receipt_version, event_id, event_digest,
    previous_event_digest, sink_identity, received_at_wall,
-   durability_class}`. La cadena por `previous_event_digest` detecta
-   modificación; **no prueba** autoría, completitud, orden global ni
-   almacenamiento externo (§10.3.5).
+   durability_class}`. **El recibo v1 no lleva MAC ni firma**: es un acuse
+   estructural del sink, no un objeto autenticado. En consecuencia: (a) la
+   cadena por `previous_event_digest` detecta **enlaces rotos respecto de
+   un head confiable** (un digest de cabeza conservado fuera del almacén
+   potencialmente reescrito); un atacante capaz de reescribir todo el
+   almacén puede recalcular la cadena, por lo que la detección absoluta de
+   "modificación posterior" no es afirmable — el claim público C8 usa esta
+   formulación acotada; (b) la filtración de la clave HMAC del operador
+   **no** habilita fabricar recibos (no llevan MAC), aunque sí capacidades
+   (N14 lo refleja); (c) la cadena **no prueba** autoría, completitud,
+   orden global ni almacenamiento externo (§10.3.5). Un recibo autenticado
+   (MAC con clave separada, dominio propio, campos cubiertos y rotación)
+   es propuesta v2, no relajación silenciosa.
 
 6. **Firma del operador sobre recibos: aplazada.** Coherente con ADR-003
    (HMAC simétrico, un operador): firmar un recibo con la misma clave que

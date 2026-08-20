@@ -202,15 +202,20 @@ print(usage.ru_utime + usage.ru_stime, flush=True)
         )
 
     @unittest.skipUnless(SYSTEM in {"Darwin", "Linux"}, "Darwin/Linux only")
-    def test_durable_receipt_flush_platform_semantics(self) -> None:
-        """Caracteriza la primitiva de flush usada por el recibo `durable`.
+    def test_flush_primitive_available(self) -> None:
+        """Caracteriza la disponibilidad de la primitiva de flush por plataforma.
 
         Base documental (clase D): en Darwin, `fsync()` no vacía la caché
-        del disco; Apple exige `fcntl(F_FULLFSYNC)` para esa garantía. En
-        Linux, `fsync()` estándar es la primitiva correcta. Este test
-        caracteriza disponibilidad y semántica de la API; la supervivencia
-        real a un corte de energía no es testeable sin hardware y queda
-        como supuesto declarado (N5 de docs/claims-y-no-claims.md).
+        del disco; Apple exige `fcntl(F_FULLFSYNC)` para esa garantía, y aun
+        así advierte que ciertos dispositivos pueden ignorarla. En Linux,
+        `fsync()` estándar es la primitiva correcta y el directorio requiere
+        sincronización separada. Este test sólo comprueba que la primitiva
+        existe y puede invocarse; NO prueba fsync del directorio, el orden
+        del protocolo creación/rename, recuperación tras crash ni
+        supervivencia a corte eléctrico — eso se valida en M3. `durable`
+        significa "protocolo de plataforma completado bajo supuestos
+        declarados" (N5 de docs/claims-y-no-claims.md), no supervivencia
+        demostrada.
         """
         import fcntl
         import tempfile

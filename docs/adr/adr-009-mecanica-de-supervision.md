@@ -19,16 +19,22 @@ F1/F3/F7 allí).
 
 ## 1. Decisión propuesta
 
-1. **Salida acotada por bucle de lectura, no por rlimit.** El supervisor
-   lee stdout/stderr con un bucle acotado: al alcanzar `output_limits`
-   deja de leer, lo declara en `stdout_truncation`/`stderr_truncation` y el
-   límite no mata al proceso por sí mismo (la muerte la producen las
-   compuertas: deadline, terminación). **`RLIMIT_FSIZE` queda descartado
-   como mecanismo primario**: no está caracterizado en las plataformas
-   objetivo (E-gates) y actúa sobre archivos, no sobre pipes. Motivación
-   empírica adicional: la captura ilimitada es una bomba de memoria contra
-   el propio supervisor (Argos F7), y en Darwin ni `RLIMIT_AS` existe como
-   red de seguridad (E1).
+1. **Salida acotada por bucle de lectura con drenado, no por rlimit.** El
+   supervisor lee stdout/stderr con un bucle acotado: al alcanzar
+   `output_limits` **sigue leyendo y descarta** (drenar-y-descartar), lo
+   declara en `stdout_truncation`/`stderr_truncation` junto con el conteo
+   de bytes descartados, y el límite no mata al proceso por sí mismo (la
+   muerte la producen las compuertas: deadline, terminación). Esta
+   semántica queda **decidida aquí, no diferida a M2** (ronda correctiva
+   2026-08-19, B6): cerrar el pipe puede matar o alterar al proceso
+   mediante SIGPIPE y dejar de leer puede bloquearlo; drenar y descartar
+   preserva el progreso del supervisado con memoria acotada del
+   supervisor. **`RLIMIT_FSIZE` queda descartado como mecanismo primario**:
+   no está caracterizado en las plataformas objetivo (E-gates) y actúa
+   sobre archivos, no sobre pipes. Motivación empírica adicional: la
+   captura ilimitada es una bomba de memoria contra el propio supervisor
+   (Argos F7), y en Darwin ni `RLIMIT_AS` existe como red de seguridad
+   (E1).
 2. **Sin hang post-kill.** Tras `SIGKILL` al grupo, la espera de EOF tiene
    su propio plazo acotado; si expira, el supervisor cierra los pipes y
    declara el cierre forzado en el resultado. Un descendiente que escapó a
@@ -39,7 +45,10 @@ F1/F3/F7 allí).
    después `SIGKILL` al grupo. El deadline se considera cumplido cuando el
    proceso principal es recogido; la gracia está presupuestada dentro del
    deadline efectivo (el supervisor inicia la secuencia de terminación
-   antes del vencimiento, no después).
+   antes del vencimiento, no después) **y ese descuento es visible en el
+   contrato**: el `GuaranteePlan` y el resultado declaran la gracia
+   aplicada y el tiempo útil resultante (ronda correctiva 2026-08-19, B6);
+   gracia 0 (SIGKILL directo) es configuración válida declarada.
 4. **Grupo de procesos, no sesión, como unidad de terminación:**
    `setpgid`/grupo propio por acción. `setsid`/double-fork por parte del
    supervisado es escape declarado fuera del modelo (§12.2, ADR-001); el
@@ -106,7 +115,7 @@ Rechazada para v1.
 
 | # | Ataque | Resultado |
 |---|---|---|
-| A1 | Dejar de leer stdout sin matar el proceso puede bloquearlo (pipe lleno) y convertir un límite de salida en un deadlock del supervisado. | **Incorporada:** al alcanzar `output_limits` el supervisor cierra su extremo de lectura (SIGPIPE/EBADF al supervisado al escribir) y lo registra; el proceso no queda bloqueado en `write` indefinidamente — muere por escritura rota o continúa sin salida, pero nunca cuelga al supervisor. La semántica exacta (cerrar vs. drenar-y-descartar) se fija en M2 con prueba de ambos comportamientos. |
+| A1 | Dejar de leer stdout sin matar el proceso puede bloquearlo (pipe lleno) y convertir un límite de salida en un deadlock del supervisado. | **Incorporada y cerrada (ronda correctiva 2026-08-19, B6):** la semántica es **drenar y descartar** tras el límite (punto 1) — ni cerrar el pipe (SIGPIPE puede matar o alterar al supervisado) ni dejar de leer (bloqueo); el supervisor nunca cuelga y el truncamiento se declara con conteo de bytes descartados. |
 | A2 | La gracia "presupuestada dentro del deadline" adelanta la terminación: un proceso que habría terminado a tiempo recibe SIGTERM antes. | **Incorporada parcialmente:** la gracia se descuenta del deadline efectivo y eso se declara en el `GuaranteePlan`; el despliegue puede fijar gracia 0 (SIGKILL directo) aceptando la pérdida de terminación cooperativa. |
 | A3 | Declararse subreaper cambia la semántica de reparentado de todo el proceso supervisor, incluidas acciones ajenas. | **Incorporada:** el subreaper se declara por proceso supervisor de acción (o se acepta explícitamente el alcance de proceso completo como supuesto declarado en el `GuaranteePlan`); la decisión exacta es de M2 y debe quedar en la tabla de garantías con sus supuestos. |
 

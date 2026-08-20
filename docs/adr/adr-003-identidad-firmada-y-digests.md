@@ -31,30 +31,46 @@ gestión de claves y confianza.
    `command_absolute` entre admisión e inicio, y efectos de modificación del
    host que ektel no aísla ni detecta.
 3. **Algoritmo de autenticación de la capacidad raíz: HMAC-SHA256** sobre
-   la cadena base64 firmada del payload (ADR-002, corregido por F1), con
-   clave simétrica del operador. Razón primaria: el modelo de amenaza
-   (ADR-001: un host, un operador) no tiene separación real de roles que la
-   asimetría compruebe — emisor y verificador son el mismo operador. Razón
-   secundaria: ADR-006 fija stdlib-only y la stdlib de Python no incluye
-   firma asimétrica (Ed25519); esta razón es de herramientas y no sostiene
-   la decisión por sí sola (revisión externa 2026-08-19, F6).
-4. **Agilidad de algoritmo:** el sobre de capacidad lleva su propio campo
-   `alg` con versión (valor v1: `HS256`, cerrado y versionado). La futura
-   migración a firma asimétrica (ADR-003 §6: consumidor externo de
-   recibos, ADR-008) introduce un `alg` nuevo **sin** forzar una versión
-   mayor de `ActionRequest` (F6).
-5. **`invocation_proof` (PoP):** con HMAC, la posesión de la clave *es* la
-   prueba; `invocation_proof` = HMAC independiente sobre
-   `nonce + payload_digest`, de modo que el nonce quede ligado al descriptor
-   concreto y no sea reusable con otro payload bajo la misma capacidad.
-6. **`identity_digest`:** `sha256` de la cadena base64 firmada del payload
-   (ADR-002 §1.2, corregido por F1: ya no "bytes transportados" a secas).
-   Incluye `artifact_identity_profile` y nonce. Dos serializaciones
-   distintas son identidades distintas (ADR-002, A4).
-7. **`admitted_action`:** valor opaco = `identity_digest + mac interno de
-   admisión + expiry`, verificado de nuevo en `start` (integridad, vigencia,
-   consumo único). El consumo se registra de forma durable junto al nonce
-   (ADR-004), cerrando el intervalo admisión→inicio también tras reinicio.
+   `protected_header_b64 + "." + payload_b64` (ADR-002, corregido por F1 y
+   B5), con clave simétrica del operador. Razón primaria: el modelo de
+   amenaza (ADR-001: un host, un operador) no tiene separación real de
+   roles que la asimetría compruebe — emisor y verificador son el mismo
+   operador. Razón secundaria: ADR-006 fija stdlib-only y la stdlib de
+   Python no incluye firma asimétrica (Ed25519); esta razón es de
+   herramientas y no sostiene la decisión por sí sola (revisión externa
+   2026-08-19, F6).
+4. **Agilidad de algoritmo:** `alg` viaja **dentro del protected header
+   autenticado** (valor v1: `HS256`, cerrado y versionado), de modo que no
+   existe downgrade por sustitución de `alg`. Cambiar de **familia**
+   criptográfica (p. ej. a firma asimétrica, criterio de §6) exige
+   **envelope v2** — la agilidad dentro de la familia HMAC no requiere
+   versión mayor de `ActionRequest`, pero ningún `alg` nuevo se acepta sin
+   estar en la lista cerrada del verificador (ronda correctiva 2026-08-19,
+   B5).
+5. **Separación de dominios y codificación inequívoca (B5):** cada uso de
+   HMAC lleva un prefijo de dominio cerrado y los componentes se codifican
+   con longitudes explícitas (estructura inequívoca, nunca concatenación
+   ambigua):
+   - capacidad: `HMAC(K, "ektel/capability/v1" || header.payload)`;
+   - `invocation_proof` (PoP): `HMAC(K, "ektel/pop/v1" || len(nonce) ||
+     nonce || payload_digest)` — el nonce queda ligado al descriptor
+     concreto y no es reusable con otro payload bajo la misma capacidad;
+   - token de admisión: `HMAC(K, "ektel/admission/v1" || …)` (punto 7).
+   La derivación de subclaves por dominio (HKDF) queda como alternativa
+   equivalente permitida; lo prohibido es el mismo MAC desnudo en tres
+   contextos.
+6. **`identity_digest`:** `sha256` de la cadena autenticada
+   `protected_header_b64 + "." + payload_b64` (ADR-002 §1.2). Incluye
+   `artifact_identity_profile` y nonce. Dos serializaciones distintas son
+   identidades distintas (ADR-002, A4).
+7. **`admitted_action` y atomicidad (B3):** valor opaco =
+   `identity_digest + mac interno de admisión + expiry`, verificado de
+   nuevo en `start` (integridad, vigencia, consumo único). La reserva del
+   nonce y el consumo del token son **dos registros distintos** (ADR-004
+   punto 4): `nonce_reservation` (CAS durable durante `admit`) y
+   `start_token_consumption` (CAS durable inmediatamente antes de crear el
+   proceso). Un crash después del CAS y antes del spawn deja el token
+   gastado y produce ausencia/fallo recuperable — nunca habilita replay.
 8. **Gestión de claves:** la clave raíz vive en un archivo del operador con
    permisos `0600`, fuera del descriptor y de los eventos. Rotación =
    reemisión de capacidades; no hay jerarquía ni delegación (D2). Los
