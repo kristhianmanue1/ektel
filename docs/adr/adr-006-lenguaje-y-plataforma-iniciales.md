@@ -1,6 +1,6 @@
 # ADR-006: Lenguaje y plataforma iniciales del runtime M0–M3
 
-**Estado:** borrador para consenso. No adoptado. No autoriza implementación.
+**Estado:** **aceptado** — Kristhian Manuel Jimenez Sanchez (krisnova@hotmail.com), 2026-08-19. Normativo; aún no autoriza implementación por sí solo (la autorización de M0 es un acto separado, propuesta §21.6).
 
 **Fecha:** 2026-08-19.
 
