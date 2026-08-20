@@ -1,8 +1,9 @@
 # Claims y no-claims de ektel M0–M3
 
-**Estado:** borrador corregido por el veredicto externo 2026-08-19
-(`docs/revisiones/revision-externa-claude-tabla-claims-2026-08-19.txt`),
-pendiente del veredicto final del dueño.
+**Estado:** **consensuada por el dueño el 2026-08-19**, tras aplicar el
+veredicto externo
+(`docs/revisiones/revision-externa-claude-tabla-claims-2026-08-19.txt`).
+Acta: `docs/decisiones/consenso-tabla-claims-2026-08-19.md`.
 **Fecha:** 2026-08-19. **Requisito:** §21.4 del criterio de adopción.
 
 Esta tabla es el lenguaje público permitido sobre ektel. Todo documento,
