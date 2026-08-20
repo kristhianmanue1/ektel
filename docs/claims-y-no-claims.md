@@ -10,7 +10,10 @@ segunda ronda externa C1–C6/D1–D5 del 2026-08-20
 Actas: `docs/decisiones/consenso-tabla-claims-2026-08-19.md`,
 `docs/decisiones/enmienda-transversal-b1-b8-2026-08-19.md` y
 `docs/decisiones/enmienda-transversal-v3-2026-08-20.md`.
-**Fecha:** 2026-08-20. **Requisito:** §21.4 del criterio de adopción.
+**Fecha:** 2026-08-20. **Requisito:** §21.4 del criterio de adopción de la
+propuesta histórica M0–M3, recogido en la especificación v1.2 §19 punto 4
+(precisión editorial por acta
+`docs/decisiones/enmienda-adopcion-19-6-y-cita-tabla-2026-08-20.md`).
 
 Esta tabla es el lenguaje público permitido sobre ektel. Todo documento,
 README o integración que afirme algo fuera de "Claims" o niegue algo de

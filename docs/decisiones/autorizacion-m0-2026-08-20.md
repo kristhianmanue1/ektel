@@ -38,8 +38,9 @@ compromiso de estabilidad en este hito.
   `ExecutionHandle` local/opaco/no serializable); las implementaciones de M0
   no reintroducen términos retirados (`durable`, C8, C9, N15).
 - Los no-claims de la tabla pública siguen vigentes y no se promueven por
-  acuerdo verbal; la ampliación de caracterización (Y-1, Y-2) es trabajo
-  pendiente, no parte de M0 salvo que se autorice aparte.
+  acuerdo verbal; la ampliación de la caracterización de plataforma
+  (durabilidad bajo fallo y RSS por muestreo en Linux) es trabajo pendiente
+  y no es parte de M0 salvo que se autorice aparte.
 
 ## Evidencia de soporte
 

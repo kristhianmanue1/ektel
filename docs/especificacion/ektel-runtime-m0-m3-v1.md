@@ -548,9 +548,8 @@ Criterio de adopción (propuesta §21) a la fecha de esta v1.2:
 5. ADR con responsable — **cumplido** (ADR-001 a ADR-009 aceptados;
    enmiendas posteriores con acta, por la regla nacida del defecto de
    gobernanza reconocido en `enmienda-adr-007-durabilidad-2026-08-19.md`).
-6. Autorización separada de M0 y de cada hito — **pendiente**. La
-   segunda revisión externa (estados, atomicidad, límites de confianza) ya
-   se ejecutó (Codex C1–C6 + Claude D1–D5, aplicadas con acta
-   `enmienda-transversal-v3-2026-08-20.md`); antes de pedir la
-   autorización: revisión cruzada final ADR/tabla/especificación y consenso
-   explícito del dueño sobre esta v1.2.
+6. Autorización separada de M0 y de cada hito — **cumplido para M0**
+   (2026-08-20, `docs/decisiones/autorizacion-m0-2026-08-20.md`, tras la
+   revisión cruzada final y el consenso explícito de esta v1.2); **M1, M2 y
+   M3 siguen sin autorizar** y cada uno requiere su propio acto. Enmienda de
+   estado con acta: `enmienda-adopcion-19-6-y-cita-tabla-2026-08-20.md`.

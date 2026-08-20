@@ -17,8 +17,10 @@ la prevalencia definida en su §0.
 
 Los ADR-001 a ADR-009 fueron aceptados el 2026-08-19
 (`consenso-adr-001-009-2026-08-19.md`). Con posterioridad a ese consenso se
-aplicaron dos rondas de enmienda transversal:
+aplicaron tres actas de enmienda:
 
+- `enmienda-adr-007-durabilidad-2026-08-19.md` (regularización de la enmienda
+  previa de ADR-007, origen de la regla de gobernanza);
 - `enmienda-transversal-b1-b8-2026-08-19.md` (ronda Codex B1–B8);
 - `enmienda-transversal-v3-2026-08-20.md` (ronda Codex C1–C6 + verificación
   Claude D1–D5), que regeneró la especificación a v1.2.
@@ -41,8 +43,10 @@ enmiendas tácitas.
 
 ## Base de la decisión
 
-- Dictamen de revisión cruzada final ADR/tabla/especificación:
-  `docs/revisiones/revision-cruzada-final-2026-08-20.md`.
+- Revisión cruzada final ADR/tabla/especificación:
+  `docs/revisiones/revision-cruzada-final-2026-08-20.md`. **Naturaleza
+  declarada: es revisión interna de consistencia, no verificación externa
+  independiente, y no adopta la v1.2 por sí misma** — la adopta este acto.
 - Tabla pública de claims/no-claims, consensuada el 2026-08-19
   (`consenso-tabla-claims-2026-08-19.md`) y verificada contra la v1.2 en la
   revisión cruzada.
