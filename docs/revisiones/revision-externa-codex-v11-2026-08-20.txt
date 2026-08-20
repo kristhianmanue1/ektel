@@ -1,0 +1,130 @@
+Veredicto
+PARCIAL — NO-GO para aprobar la especificación ni iniciar M0 todavía.
+El agente externo sí realizó una corrección sustancial: los B1–B8 fueron atendidos de buena fe, el commit 60f13de25e762d2d70a66616d68924212e613cb1 está en main, coincide con origin/main, el árbol está limpio y las pruebas pasan: 5 ejecutadas y 3 omitidas por plataforma.
+Sin embargo, la segunda revisión descubre inconsistencias contractuales nuevas. No son detalles editoriales: varias impedirían implementar dos runtimes interoperables a partir de la especificación.
+Bloqueantes que quedan
+1. La API no puede representar sus propios resultados
+La interfaz define:
+- admit(...) -> AdmissionDecision
+- start(...) -> ExecutionHandle
+- await_result(handle) -> ExecutionResult
+- terminate(handle, ...) -> TerminationReceipt
+Pero ExecutionResult contiene admission_rejected, capability_rejected y start_failed.
+Eso no es implementable coherentemente:
+- Si admit rechaza, no existe AdmittedAction ni ExecutionHandle.
+- Si start falla, puede no existir un handle sobre el cual llamar await_result.
+- Si terminate rechaza una capacidad, su tipo de retorno no admite ese rechazo.
+Corrección recomendada:
+AdmissionOutcome =
+    Admitted
+  | AdmissionRejected
+
+StartOutcome =
+    Started { handle }
+  | StartFailed { reason }
+
+ExecutionResult =
+    Executed
+  | DeadlineExceeded
+  | Terminated
+  | SupervisionFailed
+
+TerminationOutcome =
+    TerminationAccepted { receipt }
+  | TerminationRejected { reason }
+Este es el bloqueante principal de la máquina de estados.
+2. El contrato criptográfico todavía admite implementaciones incompatibles
+Los documentos mezclan al menos tres construcciones:
+- HMAC sobre header.payload.
+- HMAC sobre domain || header.payload.
+- Derivación HKDF por dominio y luego HMAC.
+No son alternativas equivalentes. Dos implementadores pueden seguir la documentación y producir firmas incompatibles.
+También faltan decisiones normativas sobre:
+- Base64 o base64url.
+- Uso o eliminación de padding.
+- Codificación de la firma.
+- Longitud y endianness de los campos.
+- Momento exacto de decodificación del protected header.
+- Dominio y protección del token de terminación.
+Para v1 conviene elegir una única construcción, por ejemplo:
+algoritmo: HS256 fijo
+codificación: base64url sin padding
+MAC input:
+ASCII("ektel/capability/v1\0")
+|| ASCII(protected_header_b64)
+|| "."
+|| ASCII(payload_b64)
+Sin alternativa HKDF en v1. Cualquier cambio de algoritmo o derivación debe ser envelope v2.
+3. C8 y el “trusted head” no tienen una interfaz implementable
+La especificación dice que la cadena se verifica respecto de un head confiable almacenado fuera del AuditSink. Sin embargo:
+- No existe un puerto TrustedHeadStore.
+- verify_receipt(Receipt) recibe un único recibo, no una cadena ni un head.
+- AuditSink solamente permite append/query.
+- El límite de confianza del almacenamiento externo no está definido.
+Hay dos soluciones legítimas:
+1. Recomendada para el runtime mínimo: retirar C8 como garantía y declarar que la cadena únicamente aporta diagnóstico de consistencia interna.
+2. Añadir explícitamente TrustedHeadStore, persistencia, rotación, recuperación ante crash y verify_chain(events, trusted_head).
+La segunda opción aumenta considerablemente P3 y su modelo operativo.
+4. Los dos CAS evitan replay, pero no definen recuperación
+La separación nonce_reservation / start_token_consumption es correcta. Lo pendiente es describir:
+- Clave exacta de cada CAS.
+- Estados y transiciones permitidas.
+- Resultado del perdedor en un inicio concurrente.
+- Qué sucede tras crash entre consumo y spawn.
+- Cómo se consulta o reconcilia ese estado.
+Actualmente se llama “recuperable” a un estado para el que no existe una API de recuperación.
+La opción mínima honesta sería:
+crash después de consumir y antes del spawn
+→ start_failed_indeterminate
+→ token permanentemente gastado
+→ nueva admisión con nonce nuevo
+5. El ExecutionHandle no tiene límites operativos definidos
+Debe indicarse si el handle:
+- Es local al proceso o serializable.
+- Sobrevive al reinicio del supervisor.
+- Es una capacidad bearer.
+- Puede persistirse.
+- Debe censurarse en logs.
+- Tiene caducidad.
+Para la primera versión recomiendo hacerlo local al proceso, opaco, no serializable, confidencial e inválido después de reiniciar el supervisor. Eso mantiene pequeño el runtime.
+6. Deadline y gracia pueden producir estados ambiguos
+El supervisor empieza a terminar el proceso antes del deadline para reservar la gracia. Si el proceso sale por ese SIGTERM antes del límite duro, la clasificación actual puede interpretarse como executed o deadline_exceeded.
+Debe clasificarse por causa:
+- Escalación iniciada por agotamiento del presupuesto → deadline_exceeded.
+- Terminación solicitada externamente → terminated.
+- Salida natural antes de iniciar escalación → executed.
+Conviene distinguir soft_termination_at y hard_deadline_at.
+Inconsistencias adicionales
+- En modo de política opcional no queda explícito qué sucede con Indeterminate: debe declararse si es fail-open, junto con el evento de auditoría obligatorio.
+- El timeout debería medirse con reloj monotónico; valid_until necesita una regla separada de reloj civil y tolerancia.
+- La especificación se declara “candidata”, pero también dice que prevalece sobre los ADR. Antes del consenso no puede tener esa autoridad.
+- La sección de avance afirma que ciertos pasos están cumplidos mientras el propio documento reconoce pendiente esta segunda revisión.
+- N14 dice que filtrar la clave invalida C7. Eso parece incorrecto: una clave filtrada compromete autorización e identidad, pero no elimina por sí sola la obligación de obtener un recibo durable. C7 solamente cae si también se compromete o evade el AuditSink.
+- El mensaje del test debería decir “F_FULLFSYNC no disponible”, no “no hay primitiva de flush real”.
+Lo que sí quedó bien
+La ronda externa merece crédito técnico:
+- B1–B8 no fueron simplemente maquillados.
+- Se documentó explícitamente la divergencia P0–P3 frente a M0–M3.
+- Se regularizó la enmienda posterior al consenso.
+- Los recibos dejaron de presentarse como autenticados.
+- El algoritmo pasó al protected header autenticado.
+- Los dos CAS mejoran realmente la resistencia a replay.
+- El núcleo valida la vigencia del Allow.
+- La prueba de durabilidad ya tiene un nombre mucho más honesto.
+- La especificación reconoce que sigue siendo candidata y no afirma que M0 exista.
+Propuesta de cierre
+Prepararía una v1.2 exclusivamente contractual, sin implementar runtime todavía:
+1. Cerrar tipos de resultados y máquina de estados.
+2. Elegir un único perfil criptográfico byte por byte y añadir vectores dorados.
+3. Retirar C8 o introducir formalmente TrustedHeadStore.
+4. Definir CAS, handles, recuperación y clasificación causal de deadlines.
+5. Corregir política opcional, jerarquía documental, N14 y estados del proceso.
+6. Ejecutar una última revisión cruzada de ADR, claims y especificación.
+7. Obtener consenso explícito del propietario.
+8. Solo entonces autorizar M0.
+Archivos centrales revisados:
+- [Especificación v1.1](/Users/krisnova/www/aria/ektel/docs/especificacion/ektel-runtime-m0-m3-v1.md)
+- [Enmienda transversal B1–B8](/Users/krisnova/www/aria/ektel/docs/decisiones/enmienda-transversal-b1-b8-2026-08-19.md)
+- [Divergencia P0–P3 / M0–M3](/Users/krisnova/www/aria/ektel/docs/decisiones/divergencia-p0-p3-m0-m3-2026-08-19.md)
+- [Claims y no-claims](/Users/krisnova/www/aria/ektel/docs/claims-y-no-claims.md)
+Conclusión: el paquete correctivo está bien encaminado y verificablemente limpio, pero no está listo para consenso. La siguiente intervención debe cerrar el contrato, no empezar a programar. No modifiqué ningún archivo durante esta revisión.

@@ -212,24 +212,45 @@ print(usage.ru_utime + usage.ru_stime, flush=True)
         sincronización separada. Este test sólo comprueba que la primitiva
         existe y puede invocarse; NO prueba fsync del directorio, el orden
         del protocolo creación/rename, recuperación tras crash ni
-        supervivencia a corte eléctrico — eso se valida en M3. `durable`
-        significa "protocolo de plataforma completado bajo supuestos
-        declarados" (N5 de docs/claims-y-no-claims.md), no supervivencia
-        demostrada.
+        supervivencia física a corte eléctrico. Niveles de prueba pendientes
+        para M3 (ronda 2026-08-20, D2): nivel 1 = SIGKILL del escritor a
+        mitad del protocolo (orden y recuperación del sink); nivel 2 =
+        dm-log-writes/dm-flakey en Linux (crash-consistency del kernel);
+        nivel 3 = corte físico real, no testeable sin hardware.
+
+        Limitación registrada (ronda 2026-08-20, D5): la sonda corre en el
+        directorio temporal del sistema; la semántica de flush depende del
+        FS y del dispositivo, así que el test registra el dispositivo y el
+        punto de montaje del volumen sondeado, y M3 debe re-sondear bajo el
+        directorio real configurado del AuditSink.
+
+        El valor de contrato asociado se llama `flush_protocol_completed`
+        (antes `durable`; renombrado por D1: el nombre no debe prometer lo
+        que la definición desmiente).
         """
         import fcntl
         import tempfile
 
         with tempfile.TemporaryFile() as handle:
-            handle.write(b"ektel-durable-probe")
+            handle.write(b"ektel-flush-probe")
+            probe_stat = os.fstat(handle.fileno())
             os.fsync(handle.fileno())
             if SYSTEM == "Darwin":
                 self.assertTrue(
                     hasattr(fcntl, "F_FULLFSYNC"),
-                    "Darwin sin F_FULLFSYNC: no hay primitiva de flush real",
+                    "F_FULLFSYNC no disponible en este Darwin",
                 )
                 fcntl.fcntl(handle.fileno(), fcntl.F_FULLFSYNC)
             # Linux: fsync estándar ya ejecutado arriba es la primitiva.
+            # D5: registrar el volumen sondeado (dispositivo y montaje).
+            mounts = {
+                fields[0]
+                for line in open("/proc/mounts", encoding="utf-8")
+                if (fields := line.split())
+            } if SYSTEM == "Linux" else set()
+            self.assertGreater(probe_stat.st_dev, 0)
+            if SYSTEM == "Linux":
+                self.assertTrue(mounts, "no se pudo leer /proc/mounts")
 
     @unittest.skipUnless(SYSTEM == "Linux", "PR_SET_CHILD_SUBREAPER is Linux-only")
     def test_subreaper_recovers_orphaned_grandchild_cpu(self) -> None:

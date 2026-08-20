@@ -11,7 +11,7 @@ la propuesta M0–M3.
 **Contexto normativo:** propuesta §6.5 (AuditSink), §10 (eventos e
 invariantes), §11 ("respuesta desconocida del AuditSink"), §18. **Absorbe
 D7b** (retirada del lote de consenso): `policy_receipt` vive en
-`AdmissionDecision v1` (§7.4), no en `ExecutionIdentity v1` (§7.3); este ADR
+`AdmissionOutcome v1` (antes `AdmissionDecision`; renombrado por C1, §7.4), no en `ExecutionIdentity v1` (§7.3); este ADR
 lo formaliza sin acto de consenso adicional, como mandata la nota del
 registro D1–D7. Decisión abierta que resuelve: garantía mínima exigida al
 AuditSink y formato de recibo (propuesta §20).
@@ -26,8 +26,11 @@ AuditSink y formato de recibo (propuesta §20).
    ```
 
    `AppendOutcome` distingue exactamente cinco casos (propuesta §6.5):
-   `durable`, `accepted_undemonstrated`, `rejected`, `unavailable`,
-   `unknown_after_timeout`. Un `append()` exitoso no equivale a durabilidad.
+   **`flush_protocol_completed`** (antes `durable` — renombrado por la
+   ronda 2026-08-20, D1: el nombre no debe prometer lo que la definición
+   desmiente), `accepted_undemonstrated`, `rejected`, `unavailable`,
+   `unknown_after_timeout`. Un `append()` exitoso no equivale a
+   durabilidad.
 
 2. **`query` es parte del contrato, no opcional.** La reconciliación tras
    `unknown_after_timeout` (§11: "no reintentar sin clave idempotente;
@@ -36,27 +39,36 @@ AuditSink y formato de recibo (propuesta §20).
    `absent` / `unknown`. Esta operación faltaba en §6.5 y este ADR la añade
    al contrato.
 
-3. **Garantía mínima del sink durable de referencia (M3):** append con
-   fsync de archivo y directorio antes de emitir recibo `durable` (perfil
+3. **Garantía mínima del sink de referencia (M3):** append con
+   fsync de archivo y directorio antes de emitir recibo
+   `flush_protocol_completed` (perfil
    `posix-fsync-dir/v1`, el mismo adoptado por AN-KLA en este repositorio),
    con corrección por plataforma: en Darwin `fsync()` no vacía la caché
    del disco y el sink debe usar `fcntl(F_FULLFSYNC)`; en Linux el fsync
    estándar basta (base documental clase D, disponibilidad de la primitiva
    caracterizada en
    `tests/escape/test_host_characterization.py::test_flush_primitive_available`).
-   **`durable` significa "protocolo de plataforma completado bajo
-   supuestos declarados", no supervivencia demostrada** (ronda correctiva
-   2026-08-19, B8): el protocolo completo — fsync del directorio, orden
+   **`flush_protocol_completed` significa "protocolo de plataforma
+   completado bajo supuestos declarados", no supervivencia demostrada**
+   (ronda correctiva 2026-08-19, B8). La testabilidad se declara por
+   niveles (ronda 2026-08-20, D2): nivel 1 — SIGKILL del escritor a mitad
+   del protocolo (orden de operaciones y recuperación del sink), testeable
+   sin hardware, **M3**; nivel 2 — `dm-log-writes`/`dm-flakey` en Linux
+   (crash-consistency estándar del kernel), testeable en VM, **M3 en la
+   plataforma primaria**; nivel 3 — corte físico real o dispositivo que
+   ignora `F_FULLFSYNC`, **no testeable sin hardware**, supuesto declarado
+   (N5). El protocolo completo — fsync del directorio, orden
    creación/rename, recuperación tras crash y comportamiento del
-   dispositivo real — se valida en M3; Apple advierte que ciertos
-   dispositivos pueden ignorar `F_FULLFSYNC`, y la supervivencia a corte
-   eléctrico no es testeable sin hardware (supuesto declarado, N5). El
-   perfil `posix-fsync-dir/v1` de AN-KLA tiene la misma limitación en
-   macOS; se declara aquí sin modificar AN-KLA. Sinks que no puedan
-   demostrar durabilidad sólo pueden emitir `accepted_undemonstrated`.
+   dispositivo real — se valida en M3, y la sonda debe correr bajo el
+   directorio real configurado del sink, no bajo el temporal del sistema
+   (D5). El perfil `posix-fsync-dir/v1` de AN-KLA tiene la misma
+   limitación en macOS; se declara aquí sin modificar AN-KLA. Sinks que no
+   puedan demostrar el protocolo sólo pueden emitir
+   `accepted_undemonstrated`.
 
 4. **Fail-closed:** cuando el despliegue declare auditoría obligatoria, un
-   evento previo al inicio que no logra recibo `durable` rechaza el inicio
+   evento previo al inicio que no logra recibo `flush_protocol_completed`
+   rechaza el inicio
    (propuesta §10.3.3 y §11). La pérdida del sink *después* de iniciar
    produce brecha explícita (`audit_gap_detected` o ausencia declarada);
    nunca se rellena retrospectivamente (§10.3.6).
@@ -66,17 +78,21 @@ AuditSink y formato de recibo (propuesta §20).
    previous_event_digest, sink_identity, received_at_wall,
    durability_class}`. **El recibo v1 no lleva MAC ni firma**: es un acuse
    estructural del sink, no un objeto autenticado. En consecuencia: (a) la
-   cadena por `previous_event_digest` detecta **enlaces rotos respecto de
-   un head confiable** (un digest de cabeza conservado fuera del almacén
-   potencialmente reescrito); un atacante capaz de reescribir todo el
-   almacén puede recalcular la cadena, por lo que la detección absoluta de
-   "modificación posterior" no es afirmable — el claim público C8 usa esta
-   formulación acotada; (b) la filtración de la clave HMAC del operador
-   **no** habilita fabricar recibos (no llevan MAC), aunque sí capacidades
-   (N14 lo refleja); (c) la cadena **no prueba** autoría, completitud,
-   orden global ni almacenamiento externo (§10.3.5). Un recibo autenticado
-   (MAC con clave separada, dominio propio, campos cubiertos y rotación)
-   es propuesta v2, no relajación silenciosa.
+   filtración de la clave HMAC del operador **no** habilita fabricar
+   recibos (no llevan MAC), aunque sí capacidades (N14 lo refleja); (b) la
+   cadena **no prueba** autoría, completitud, orden global ni
+   almacenamiento externo (§10.3.5). Un recibo autenticado (MAC con clave
+   separada, dominio propio, campos cubiertos y rotación) es propuesta v2,
+   no relajación silenciosa.
+
+   **Sobre la cadena (segunda revisión externa 2026-08-20, C3):** la
+   formulación «head confiable» de la ronda B1–B8 no tenía interfaz
+   implementable (no existe puerto `TrustedHeadStore` ni `verify_chain`).
+   En v1 la cadena por `previous_event_digest` aporta **diagnóstico de
+   consistencia interna** únicamente; la verificación contra un head
+   confiable externo (con su puerto, persistencia, rotación y recuperación)
+   queda como propuesta v2. El claim público C8 se retira por inimplementable
+   en v1 (la tabla pública registra la retirada).
 
 6. **Firma del operador sobre recibos: aplazada.** Coherente con ADR-003
    (HMAC simétrico, un operador): firmar un recibo con la misma clave que
@@ -85,7 +101,7 @@ AuditSink y formato de recibo (propuesta §20).
    acaso, con la v2 criptográfica (ADR-003 §6).
 
 7. **D7b formalizada:** `policy_receipt` es campo opcional de
-   `AdmissionDecision`, producido por el PolicyPort (ADR-008); nunca forma
+   `AdmissionOutcome`, producido por el PolicyPort (ADR-008); nunca forma
    parte de la identidad firmada del artefacto. La separación dominio vs.
    política (propuesta §5) queda así cerrada.
 

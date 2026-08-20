@@ -47,18 +47,23 @@ gestión de claves y confianza.
    versión mayor de `ActionRequest`, pero ningún `alg` nuevo se acepta sin
    estar en la lista cerrada del verificador (ronda correctiva 2026-08-19,
    B5).
-5. **Separación de dominios y codificación inequívoca (B5):** cada uso de
-   HMAC lleva un prefijo de dominio cerrado y los componentes se codifican
-   con longitudes explícitas (estructura inequívoca, nunca concatenación
-   ambigua):
-   - capacidad: `HMAC(K, "ektel/capability/v1" || header.payload)`;
-   - `invocation_proof` (PoP): `HMAC(K, "ektel/pop/v1" || len(nonce) ||
-     nonce || payload_digest)` — el nonce queda ligado al descriptor
-     concreto y no es reusable con otro payload bajo la misma capacidad;
-   - token de admisión: `HMAC(K, "ektel/admission/v1" || …)` (punto 7).
-   La derivación de subclaves por dominio (HKDF) queda como alternativa
-   equivalente permitida; lo prohibido es el mismo MAC desnudo en tres
-   contextos.
+5. **Separación de dominios y codificación inequívoca (B5, C2):** cada uso
+   de HMAC lleva un prefijo de dominio cerrado y los componentes se
+   codifican con longitudes explícitas (enteros de 32 bits big-endian;
+   estructura inequívoca, nunca concatenación ambigua):
+   - capacidad: dominio `ektel/capability/v1` sobre `header.payload`;
+   - `invocation_proof` (PoP): dominio `ektel/pop/v1` sobre
+     `len(nonce) || nonce || payload_digest` — el nonce queda ligado al
+     descriptor concreto y no es reusable con otro payload bajo la misma
+     capacidad;
+   - token de admisión: dominio `ektel/admission/v1` (punto 7);
+   - token de terminación (en el `ExecutionHandle`, B2): dominio
+     `ektel/termination/v1`.
+   **v1 admite una única construcción** (ADR-002, perfil byte-exacto):
+   prefijo de dominio ASCII terminado en `0x00` sobre la misma clave del
+   operador. La derivación de subclaves (HKDF) queda **prohibida en v1**:
+   dos construcciones «equivalentes» producirían implementaciones
+   incompatibles (segunda revisión externa 2026-08-20, C2).
 6. **`identity_digest`:** `sha256` de la cadena autenticada
    `protected_header_b64 + "." + payload_b64` (ADR-002 §1.2). Incluye
    `artifact_identity_profile` y nonce. Dos serializaciones distintas son
@@ -70,8 +75,15 @@ gestión de claves y confianza.
    punto 4): `nonce_reservation` (CAS durable durante `admit`) y
    `start_token_consumption` (CAS durable inmediatamente antes de crear el
    proceso). Un crash después del CAS y antes del spawn deja el token
-   gastado y produce ausencia/fallo recuperable — nunca habilita replay.
-8. **Gestión de claves:** la clave raíz vive en un archivo del operador con
+   gastado y produce `start_failed_indeterminate` (ADR-004 punto 4, ADR-005)
+   — nunca habilita replay.
+8. **`ExecutionHandle` y token de terminación (B2, C5):** `start` exitoso
+   emite un handle opaco que porta un token de terminación (MAC con dominio
+   `ektel/termination/v1` sobre `action_id || identity_digest`). El handle
+   es **local al proceso supervisor, no serializable, confidencial**
+   (redactado en logs y eventos) e **inválido tras reiniciar el
+   supervisor**: no es una capacidad bearer persistible.
+9. **Gestión de claves:** la clave raíz vive en un archivo del operador con
    permisos `0600`, fuera del descriptor y de los eventos. Rotación =
    reemisión de capacidades; no hay jerarquía ni delegación (D2). Los
    eventos y resultados nunca registran la clave ni el HMAC completo: sólo

@@ -48,7 +48,11 @@ F1/F3/F7 allí).
    antes del vencimiento, no después) **y ese descuento es visible en el
    contrato**: el `GuaranteePlan` y el resultado declaran la gracia
    aplicada y el tiempo útil resultante (ronda correctiva 2026-08-19, B6);
-   gracia 0 (SIGKILL directo) es configuración válida declarada.
+   gracia 0 (SIGKILL directo) es configuración válida declarada. El
+   supervisor computa y registra dos instantes (segunda revisión externa
+   2026-08-20, C6): `soft_termination_at` (inicio de la escalación =
+   deadline efectivo menos gracia) y `hard_deadline_at` (cota absoluta); la
+   clasificación del estado final es por causa, según ADR-005 punto 3.
 4. **Grupo de procesos, no sesión, como unidad de terminación:**
    `setpgid`/grupo propio por acción. `setsid`/double-fork por parte del
    supervisado es escape declarado fuera del modelo (§12.2, ADR-001); el

@@ -1,12 +1,12 @@
-# Especificación ektel — runtime mínimo M0–M3, v1.1
+# Especificación ektel — runtime mínimo M0–M3, v1.2
 
 **Estado:** candidata a especificación adoptada, para consenso del dueño.
-Pendiente además de la segunda revisión externa (estados, atomicidad y
-límites de confianza) exigida por la ruta de la ronda correctiva.
-**Versión del documento:** 1.1 (2026-08-19) — regenerada desde las
-enmiendas B1–B8 (`docs/decisiones/enmienda-transversal-b1-b8-2026-08-19.md`)
-tras la revisión externa de Codex; la v1.0 queda superada antes de su
-consenso.
+La segunda revisión externa (Codex, C1–C6) y el pase de verificación
+(Claude, D1–D5) están aplicados; el cierre restante es: revisión cruzada
+final ADR/tabla/especificación → consenso explícito → autorización de M0.
+**Versión del documento:** 1.2 (2026-08-20) — regenerada desde el acta
+`docs/decisiones/enmienda-transversal-v3-2026-08-20.md`; v1.0 y v1.1 quedan
+superadas antes de consenso.
 **Versión de los contratos:** `schema_version` v1 en todos los wire types.
 
 ## 0. Autoridad y genealogía
@@ -28,18 +28,23 @@ Este documento funde en una sola fuente normativa:
   y regla «enmienda = acta»), `divergencia-p0-p3-m0-m3-2026-08-19.md`
   (ektel no implementa P0–P3 literalmente) y
   `enmienda-transversal-b1-b8-2026-08-19.md` (B1–B8 de la revisión de
-  Codex).
+  Codex);
+- la segunda ronda externa con su acta
+  `enmienda-transversal-v3-2026-08-20.md` (C1–C6 de Codex y D1–D5 de
+  Claude).
 
-Ante conflicto: manda este documento; después los ADR; después la tabla
-pública para lenguaje externo; la propuesta y los documentos anteriores son
-evidencia de evolución, no fuentes normativas. La evidencia reproducible
-manda sobre cualquier promesa narrativa (propuesta §2).
+Ante conflicto, y **una vez consensuada esta especificación**: manda este
+documento; después los ADR; después la tabla pública para lenguaje externo;
+la propuesta y los documentos anteriores son evidencia de evolución, no
+fuentes normativas. **Mientras sea candidata, mandan los ADR y las actas**
+(I3 de la segunda ronda externa: una candidata no puede prevalecer sobre lo
+que aún no la adopta). La evidencia reproducible manda sobre cualquier
+promesa narrativa (propuesta §2).
 
 **Esto no autoriza M0.** La autorización de M0 es un acto separado
-(propuesta §21.6). Además, esta v1.1 está pendiente de la segunda revisión
-externa centrada en estados, atomicidad y límites de confianza (ruta de la
-ronda correctiva) y del consenso explícito del dueño; hasta entonces no se
-afirma que §21.1–§21.5 estén cerrados.
+(propuesta §21.6), posterior a la revisión cruzada final y al consenso
+explícito de esta v1.2; hasta entonces no se afirma que §21.1–§21.5 estén
+cerrados.
 
 ## 1. Decisión adoptada
 
@@ -113,7 +118,14 @@ reemplazable y no forma parte del modelo de autorización.
    **antes** de decodificar y nunca re-serializa para verificar. El
    decodificado base64 estricto es defensa en profundidad, no pieza
    portante. Cambiar de familia criptográfica exige **envelope v2**, no
-   sólo un `alg` nuevo.
+   sólo un `alg` nuevo. **Perfil byte-exacto v1 (C2):** `HS256` fijo;
+   base64url **sin padding** para `protected_header_b64`, `payload_b64` y
+   `signature`; entrada del MAC = `ASCII("ektel/<dominio>/v1") || 0x00 ||
+   ASCII(protected_header_b64) || "." || ASCII(payload_b64)`; longitudes de
+   32 bits big-endian donde apliquen; orden de verificación: localizar
+   `signature` por parseo superficial, verificar el MAC y sólo después
+   decodificar header y payload. No existe perfil alternativo
+   «equivalente» en v1.
 3. Ningún esquema de canonicalización JSON entra en v1.
 4. Cada wire type v1 tiene vectores dorados (bytes + digest esperado +
    diagnóstico esperado) consumibles por todo parser de referencia.
@@ -143,8 +155,11 @@ reemplazable y no forma parte del modelo de autorización.
    y codificación por longitudes (nunca concatenación ambigua):
    `ektel/capability/v1` (capacidad), `ektel/pop/v1` (`invocation_proof` =
    HMAC sobre `len(nonce) || nonce || payload_digest`), y
-   `ektel/admission/v1` (token de admisión). HKDF por dominio es
-   alternativa equivalente permitida.
+   `ektel/admission/v1` (token de admisión) y `ektel/termination/v1`
+   (token de terminación del `ExecutionHandle`, B2). Construcción única en
+   v1 (C2): prefijo de dominio ASCII terminado en `0x00` sobre la clave del
+   operador; **HKDF prohibido en v1** — dos construcciones «equivalentes»
+   producirían implementaciones incompatibles.
 5. `identity_digest`: SHA-256 de la cadena autenticada
    `protected_header_b64 + "." + payload_b64`; incluye
    `artifact_identity_profile` y nonce. Dos serializaciones distintas son
@@ -154,12 +169,18 @@ reemplazable y no forma parte del modelo de autorización.
    único. La reserva del nonce y el consumo del token son **dos registros
    CAS durable distintos** (§7.4): `nonce_reservation` en `admit` y
    `start_token_consumption` inmediatamente antes del spawn; un crash entre
-   el CAS y el spawn deja el token gastado — nunca habilita replay (B3).
+   el CAS y el spawn deja el token permanentemente gastado y produce
+   `start_failed_indeterminate` — nunca habilita replay (B3, C4).
 7. Gestión de claves: archivo del operador con permisos `0600`, fuera del
    descriptor y de los eventos. Rotación = reemisión; sin jerarquía ni
    delegación (D2). Los eventos y resultados nunca registran la clave ni
    el HMAC completo: sólo `key_id` (digest truncado de la clave con sal de
    despliegue).
+8. **`ExecutionHandle` (B2, C5):** lo emite `start` exitoso; porta un token
+   opaco de terminación (MAC con dominio `ektel/termination/v1` sobre
+   `action_id || identity_digest`). Es local al proceso supervisor, opaco,
+   no serializable, confidencial (redactado en logs y eventos) e inválido
+   tras reiniciar el supervisor; no es una capacidad bearer persistible.
 
 El descriptor no contiene secretos (R2): los eventos registran el entorno
 sólo por digest o forma redactada (§10.4).
@@ -183,12 +204,16 @@ sólo por digest o forma redactada (§10.4).
    pared disciplinado (NTP); un administrador del host está fuera del
    modelo (§12).
 4. **Replay store durable y obligatorio, con dos registros CAS distintos
-   (B3):** `nonce_reservation` durante `admit` (el nonce se reserva antes
-   de emitir la admisión) y `start_token_consumption` inmediatamente antes
-   de crear el proceso (el `admitted_action` se gasta en `start`; el CAS
-   cierra la carrera entre dos `start` concurrentes). Un crash después del
-   CAS de consumo y antes del spawn deja el token gastado y produce
-   ausencia/fallo recuperable — nunca replay. Ambos registros usan el
+   (B3, detalle C4/D3):** `nonce_reservation` durante `admit` — clave
+   `(issuer_id, nonce)`, estados `free → reserved` — y
+   `start_token_consumption` inmediatamente antes de crear el proceso —
+   clave `identity_digest`, estados `unspent → spent`; el perdedor de un
+   `start` concurrente recibe `capability_rejected` con código cerrado.
+   **Recuperación:** un crash después del CAS de consumo y antes del spawn
+   deja el token permanentemente gastado y produce
+   `start_failed_indeterminate`; la operación se reintenta como nueva
+   admisión con nonce nuevo, y la reconciliación consulta el store por
+   `identity_digest` — nunca replay. Ambos registros usan el
    perfil `posix-fsync-dir/v1` con la corrección por plataforma de §11.3 y
    sobreviven reinicios; un nonce permanece reservado hasta
    `exp + tolerancia`. Sin store disponible, la admisión rechaza
@@ -199,12 +224,15 @@ sólo por digest o forma redactada (§10.4).
 ## 8. Operaciones del núcleo y contratos públicos
 
 ```text
-admit(ActionRequest) -> AdmissionDecision
-start(AdmittedAction) -> ExecutionHandle
-terminate(ExecutionHandle, TerminationReason) -> TerminationReceipt
+admit(ActionRequest) -> AdmissionOutcome
+start(AdmittedAction) -> StartOutcome
+terminate(ExecutionHandle, TerminationReason) -> TerminationOutcome
 await_result(ExecutionHandle) -> ExecutionResult
 verify_receipt(Receipt) -> VerificationResult
 ```
+
+Los tipos de resultado son por operación (C1, §8.3): ninguno carga estados
+que su interfaz no puede producir.
 
 **Autorización de `terminate` (enmienda R1, reescrita tras F3; interfaz
 corregida por B2):** `terminate` recibe el `ExecutionHandle` emitido por
@@ -231,11 +259,11 @@ Campos (propuesta §7.2, sin cambios): `schema_version`, `action_id`,
 incluida: `command_absolute` no implica identidad suficiente del artefacto
 (ver §6.1 y no-claim N1).
 
-### 8.2 AdmissionDecision v1
+### 8.2 AdmissionOutcome v1
 
 ```text
 Admitted { admitted_action, identity_digest, policy_receipt?, guarantee_plan }
-Rejected { reason_code, safe_detail, retryable, evidence_receipt? }
+AdmissionRejected { reason_code, safe_detail, retryable, evidence_receipt? }
 ```
 
 `policy_receipt` lo produce el PolicyPort cuando está configurado
@@ -243,25 +271,40 @@ Rejected { reason_code, safe_detail, retryable, evidence_receipt? }
 versionados; `safe_detail` nunca filtra secretos, claves, entorno completo
 ni material de firma.
 
-### 8.3 ExecutionResult v1 (ADR-005, formaliza D5)
+### 8.3 Tipos de resultado por operación (ADR-005, formaliza D5; corregido por C1)
 
-Vocabulario cerrado y versionado:
+Cada operación tiene su tipo de resultado; ningún tipo carga estados que su
+interfaz no puede producir:
 
-- antes de iniciar: `admission_rejected`, `capability_rejected`,
-  `start_failed`;
-- después de iniciar: `executed`, `deadline_exceeded`, `terminated`,
-  `supervision_failed`.
+```text
+AdmissionOutcome  = Admitted | AdmissionRejected { reason_code, safe_detail, retryable, evidence_receipt? }
+StartOutcome      = Started { handle } | StartFailed { reason_code }
+TerminationOutcome = TerminationAccepted { receipt } | TerminationRejected { reason_code }
+ExecutionResult   (sólo post-inicio) = executed | deadline_exceeded | terminated | supervision_failed
+```
+
+Vocabulario cerrado y versionado: los rechazos de admisión (descriptor mal
+formado, capacidad inválida/expirada/reutilizada con `reason_code`
+`capability_rejected`, política, auditoría) viven en `AdmissionRejected`;
+`start_failed` y `start_failed_indeterminate` (crash tras el CAS de consumo
+y antes del spawn, §7.4) son códigos de `StartFailed`; los estados de
+ejecución son sólo los cuatro post-inicio. Una terminación sin handle
+válido produce `TerminationRejected` (código `capability_rejected`), no un
+estado de ejecución.
 
 `budget_exceeded` **no existe en v1**; sólo podrá añadirse para una
 magnitud cuyo mecanismo esté clasificado y probado en la plataforma
-objetivo, nunca como comodín. Precedencia fija: deadline observado precede
-a presupuesto y a toda otra compuerta; una orden externa aceptada produce
-`terminated` sólo si precede al deadline observado. **Ausencia honesta de
-resultado:** si el supervisor muere no hay resultado y no se inventa
-estado. `executed` no significa éxito de negocio. `guarantees_applied`
-refleja lo que realmente operó (con su clase), no lo solicitado. Campos del
-resultado: los de la propuesta §7.5, incluidos `stdout_truncation`,
-`stderr_truncation` y `last_event_receipt`.
+objetivo, nunca como comodín. Precedencia fija y **clasificación por causa**
+(C6): el supervisor distingue `soft_termination_at` (deadline efectivo
+menos gracia) y `hard_deadline_at`; salida natural antes de iniciada la
+escalación → `executed`; escalación iniciada por agotamiento del plazo →
+`deadline_exceeded`; terminación externa aceptada antes de la escalación →
+`terminated`. **Ausencia honesta de resultado:** si el supervisor muere no
+hay resultado y no se inventa estado. `executed` no significa éxito de
+negocio. `guarantees_applied` refleja lo que realmente operó (con su
+clase), no lo solicitado. Campos del resultado: los de la propuesta §7.5,
+incluidos `stdout_truncation`, `stderr_truncation`, `discarded_bytes` y
+`last_event_receipt`.
 
 ## 9. Clases de garantía y PolicyPort (ADR-008)
 
@@ -278,7 +321,8 @@ cuando la política es obligatoria. Ektel afirma la **presencia** de un
 `Allow`, no la corrección de la política externa. La validación del
 **sobre de respuesta** es del núcleo (B7): forma, `decision_id`, vigencia
 (`valid_until` contra reloj de pared con la tolerancia declarada) y
-recepción dentro del timeout; un `Allow` expirado o tardío se convierte en
+recepción dentro del timeout — medido con **reloj monotónico** (los plazos
+nunca usan reloj de pared; la vigencia sí); un `Allow` expirado o tardío se convierte en
 `Indeterminate` — y en rechazo cuando el puerto sea requerido. Lo que el
 núcleo no valida es que el adaptador decida bien (no-claim N16).
 
@@ -286,9 +330,12 @@ núcleo no valida es que el adaptador decida bien (no-claim N16).
 `policy_mode ∈ {absent, optional, required}` y
 `audit_mode ∈ {optional, required}`; el perfil viaja en
 `deployment_claims` y se documenta. Con `policy_mode=required`, puerto
-ausente, indisponible o `Indeterminate` rechaza la admisión. Los contract
-tests corren contra el puerto nulo y uno falso: el núcleo se prueba
-completo sin CAGF.
+ausente, indisponible o `Indeterminate` rechaza la admisión. Con
+`optional`, `Indeterminate` o puerto indisponible es **fail-open
+declarado**: la admisión prosigue y emite el evento `policy_degraded`,
+obligatorio si `audit_mode=required` — la degradación nunca es silenciosa
+(I1). Los contract tests corren contra el puerto nulo y uno falso: el
+núcleo se prueba completo sin CAGF.
 
 **Frontera CAGF:** las conversiones prohibidas de la propuesta §9.2 son
 norma (una capacidad local no es conformidad A9; un log local no es
@@ -300,20 +347,24 @@ axiomas CAGF.
 ## 10. Trazabilidad y eventos (propuesta §10 + ADR-007)
 
 Cobertura honesta (§10.1 de la propuesta, sin cambios). `RuntimeEvent v1`
-con los campos y tipos mínimos de la propuesta §10.2. Invariantes 1–6 de
-la propuesta §10.3, con la invariante 5 acotada por B1: la cadena hash
-detecta **enlaces rotos respecto de un head confiable** (digest de cabeza
-conservado fuera del almacén), pero no prueba autoría, completitud, orden
-global ni almacenamiento externo — un atacante que reescribe todo el
-almacén puede recalcular la cadena. Las demás invariantes sin cambios:
-payloads sensibles por digest o forma redactada; la brecha de auditoría es
-explícita y nunca se rellena retrospectivamente.
+con los campos y tipos mínimos de la propuesta §10.2 más
+`policy_degraded` (I1). Invariantes 1–6 de la propuesta §10.3, con la
+invariante 5 corregida por C3: la cadena hash aporta en v1 **diagnóstico de
+consistencia interna únicamente** — no prueba autoría, completitud, orden
+global ni almacenamiento externo, y un atacante que reescribe todo el
+almacén puede recalcularla; la verificación contra un head confiable
+externo requeriría un puerto `TrustedHeadStore` que no existe en v1
+(propuesta v2; el claim C8 se retiró de la tabla pública). Las demás
+invariantes sin cambios: payloads sensibles por digest o forma redactada;
+la brecha de auditoría es explícita y nunca se rellena retrospectivamente.
 
 ## 11. AuditSink (ADR-007, absorbe D7b)
 
 1. Contrato: `AuditSink.append(RuntimeEvent) -> AppendOutcome` y
    `AuditSink.query(event_id) -> EventStatus`. `AppendOutcome` distingue
-   exactamente cinco casos: `durable`, `accepted_undemonstrated`,
+   exactamente cinco casos: **`flush_protocol_completed`** (antes
+   `durable` — renombrado por D1: el nombre no debe prometer lo que la
+   definición desmiente), `accepted_undemonstrated`,
    `rejected`, `unavailable`, `unknown_after_timeout`. Un `append()`
    exitoso no equivale a durabilidad. `query` es parte del contrato:
    la reconciliación tras `unknown_after_timeout` es por `event_id`, con
@@ -321,27 +372,30 @@ explícita y nunca se rellena retrospectivamente.
    reconciliación operativa, no a la verificación (esa es
    `verify_receipt` contra digest y cadena).
 2. Fail-closed: con `audit_mode=required`, un evento previo al inicio sin
-   recibo `durable` rechaza el inicio. La pérdida del sink después de
+   recibo `flush_protocol_completed` rechaza el inicio. La pérdida del sink después de
    iniciar produce brecha explícita (`audit_gap_detected` o ausencia
    declarada); nunca se rellena.
-3. **Sink durable de referencia (M3):** append con fsync de archivo y
-   directorio antes de emitir `durable` (perfil `posix-fsync-dir/v1`),
-   con corrección por plataforma: en Darwin `fsync()` no vacía la caché
-   del disco y el sink usa `fcntl(F_FULLFSYNC)`; en Linux el fsync
-   estándar basta (disponibilidad de la primitiva caracterizada en
+3. **Sink de referencia (M3):** append con fsync de archivo y
+   directorio antes de emitir `flush_protocol_completed` (perfil
+   `posix-fsync-dir/v1`), con corrección por plataforma: en Darwin
+   `fsync()` no vacía la caché del disco y el sink usa
+   `fcntl(F_FULLFSYNC)`; en Linux el fsync estándar basta (disponibilidad
+   de la primitiva caracterizada en
    `tests/escape/test_host_characterization.py::test_flush_primitive_available`).
-   **`durable` significa "protocolo de plataforma completado bajo
-   supuestos declarados", no supervivencia demostrada** (B8): el protocolo
-   completo (fsync del directorio, orden creación/rename, recuperación
-   tras crash) se valida en M3, y la supervivencia a corte eléctrico es
-   supuesto declarado no testeable (N5). Sinks sin durabilidad demostrable
-   sólo emiten `accepted_undemonstrated`.
+   `flush_protocol_completed` significa "protocolo de plataforma
+   completado bajo supuestos declarados" (B8), con testabilidad por
+   niveles (D2): nivel 1 — SIGKILL del escritor a mitad del protocolo
+   (M3); nivel 2 — `dm-log-writes`/`dm-flakey` en Linux (M3); nivel 3 —
+   corte físico real, no testeable sin hardware (supuesto declarado, N5).
+   La sonda corre bajo el directorio real configurado del sink, no bajo el
+   temporal del sistema (D5). Sinks sin protocolo demostrable sólo emiten
+   `accepted_undemonstrated`.
 4. **Recibo v1 (sin MAC — B1):** `{receipt_version, event_id,
    event_digest, previous_event_digest, sink_identity, received_at_wall,
    durability_class}` — acuse estructural del sink, no objeto autenticado.
-   La cadena por digest detecta **enlaces rotos respecto de un head
-   confiable** conservado fuera del almacén; un atacante que reescribe
-   todo el almacén puede recalcular la cadena (C8 acotado, N7/N14). Un
+   La cadena por digest aporta **diagnóstico de consistencia interna** en
+   v1; no existe puerto de head confiable (C3; C8 retirado de la tabla
+   pública, N7/N14). Un
    recibo autenticado (MAC con clave separada y dominio propio) es
    propuesta v2.
 
@@ -395,8 +449,10 @@ resuelto por `command_absolute` entre admisión e inicio (perfil
 host que ektel no aísla ni detecta. Ektel no protege su almacén ni su clave
 contra el proceso supervisado más allá de la separación de escritura por
 diseño (N14): si la clave se filtra, C1, C2 y C7 caen en silencio
-(capacidades fabricadas); si el almacén es reescrito por completo, C8 cae
-por recálculo de la cadena.
+(capacidades fabricadas: caen C1 y C2); C7 sólo cae si además se
+compromete o evade el AuditSink; y si el almacén es reescrito por completo,
+la cadena deja de detectarlo (C8 está retirado: en v1 es diagnóstico de
+consistencia interna).
 
 ## 14. Plataforma y lenguaje (ADR-006)
 
@@ -444,7 +500,7 @@ Linux y macOS se prueban por separado.
 ### M3 — Evidencia
 
 Propuesta §13 M3 más el contrato AuditSink de §11: RuntimeEvent v1, sink en
-memoria de pruebas y sink durable de referencia (con `F_FULLFSYNC` en
+memoria de pruebas y sink de referencia `flush_protocol_completed` (con `F_FULLFSYNC` en
 Darwin), recibos y verificación, pruebas de pérdida/retry/reconciliación,
 adaptador de política falso. Criterio de la propuesta §13 M3 sin cambios.
 
@@ -484,7 +540,7 @@ La tabla de riesgos de la propuesta §19 se mantiene, con «decidir
 digest/handle estable en D7 y ADR-003» ya resuelto por §6.1 (perfil
 `route_mutable_unverified` declarado, no mitigado).
 
-Criterio de adopción (propuesta §21) a la fecha de esta v1.1:
+Criterio de adopción (propuesta §21) a la fecha de esta v1.2:
 
 1. D1–D7 con resolución y dueño — **cumplido** (2026-08-18).
 2. Ronda adversarial — **cumplida** (R1–R12 + externa F1–F8 + externa
@@ -496,7 +552,9 @@ Criterio de adopción (propuesta §21) a la fecha de esta v1.1:
 5. ADR con responsable — **cumplido** (ADR-001 a ADR-009 aceptados;
    enmiendas posteriores con acta, por la regla nacida del defecto de
    gobernanza reconocido en `enmienda-adr-007-durabilidad-2026-08-19.md`).
-6. Autorización separada de M0 y de cada hito — **pendiente**. Antes de
-   pedirla: segunda revisión externa de esta v1.1 (estados, atomicidad y
-   límites de confianza) y consenso explícito del dueño sobre la
-   especificación corregida.
+6. Autorización separada de M0 y de cada hito — **pendiente**. La
+   segunda revisión externa (estados, atomicidad, límites de confianza) ya
+   se ejecutó (Codex C1–C6 + Claude D1–D5, aplicadas con acta
+   `enmienda-transversal-v3-2026-08-20.md`); antes de pedir la
+   autorización: revisión cruzada final ADR/tabla/especificación y consenso
+   explícito del dueño sobre esta v1.2.

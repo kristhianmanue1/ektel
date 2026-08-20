@@ -24,7 +24,10 @@ si PolicyPort es omitible o requerido por perfil de despliegue (§20).
    **sobre de respuesta** es del núcleo: forma del `PolicyDecision`,
    `decision_id` presente, vigencia (`valid_until` contra el reloj de
    pared con la tolerancia declarada de ADR-004) y recepción dentro del
-   timeout de la llamada. Un `Allow` expirado o recibido fuera de plazo se
+   timeout de la llamada — medido con **reloj monotónico** (ADR-004: los
+   plazos nunca usan reloj de pared; la vigencia sí, por ser afirmación
+   civil compartida con el emisor). Un `Allow` expirado o recibido fuera de
+   plazo se
    convierte en `Indeterminate` — y por tanto en rechazo cuando el puerto
    sea requerido. Aceptar un `Allow` ya expirado sería una decisión del
    núcleo, no «corrección de política externa».
@@ -36,7 +39,12 @@ si PolicyPort es omitible o requerido por perfil de despliegue (§20).
    la documentación del despliegue. Con `policy_mode=required`, un
    PolicyPort ausente, indisponible o `Indeterminate` rechaza la admisión
    (fail-closed, §11). Con `absent`, la admisión no invoca el puerto y el
-   resultado lo declara.
+   resultado lo declara. **Con `optional`, `Indeterminate` o puerto
+   indisponible es fail-open declarado** (segunda revisión externa
+   2026-08-20): la admisión prosigue y emite el evento
+   `policy_degraded` — si `audit_mode=required`, ese evento es obligatorio
+   y su fallo rechaza el inicio (ADR-007 punto 4); la degradación nunca es
+   silenciosa.
 3. **Los contract tests corren contra el puerto nulo y contra uno falso**
    (M1 y M3): el núcleo se prueba completo sin CAGF, demostrando por
    construcción que CAGF no es dependencia.
@@ -49,7 +57,7 @@ si PolicyPort es omitible o requerido por perfil de despliegue (§20).
    documento del núcleo nombra axiomas CAGF. La palabra "CAGF" aparece
    sólo en adaptadores y documentación de integración.
 6. **`policy_receipt`** lo produce el puerto y viaja en
-   `AdmissionDecision.policy_receipt?` (ADR-007, D7b absorbida).
+   `AdmissionOutcome.policy_receipt?` (ADR-007, D7b absorbida).
 
 ## 2. Motivación
 

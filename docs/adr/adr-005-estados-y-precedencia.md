@@ -15,19 +15,39 @@ presupuesto).
 
 ## 1. Decisión propuesta
 
-1. **D5 se formaliza sin cambios de sustancia.** El vocabulario cerrado de
-   estados de `ExecutionResult v1` es exactamente:
-   - antes de iniciar: `admission_rejected`, `capability_rejected`,
-     `start_failed`;
-   - después de iniciar: `executed`, `deadline_exceeded`, `terminated`,
-     `supervision_failed`.
+1. **D5 se formaliza con tipos de resultado por operación** (corregido por
+   la segunda revisión externa 2026-08-20, C1: un único `ExecutionResult`
+   con estados pre-inicio no era implementable — si `admit` rechaza no
+   existe handle para `await_result`). El vocabulario cerrado y versionado
+   es:
+   - `AdmissionOutcome = Admitted | AdmissionRejected { reason_code, … }`
+     — aquí viven los rechazos de admisión, incluida la capacidad
+     inválida/expirada/reutilizada (`capability_rejected` como
+     `reason_code` de `AdmissionRejected`, no como estado de ejecución);
+   - `StartOutcome = Started { handle } | StartFailed { reason_code }`,
+     con `start_failed` y `start_failed_indeterminate` (crash tras el CAS
+     de consumo y antes del spawn, ADR-004 punto 4) como códigos cerrados;
+   - `ExecutionResult` (sólo post-inicio): `executed`,
+     `deadline_exceeded`, `terminated`, `supervision_failed`;
+   - `TerminationOutcome = TerminationAccepted { receipt } |
+     TerminationRejected { reason_code }` — el rechazo de una terminación
+     sin handle válido usa este tipo, no un estado de ejecución.
 2. **`budget_exceeded` no existe en v1.** Sólo podrá añadirse en una versión
    posterior para una magnitud cuyo mecanismo esté clasificado y probado en
    la plataforma objetivo (propuesta §7.5); nunca como comodín de una
    observación incompleta.
-3. **Precedencia fija:** deadline observado precede a presupuesto y a toda
-   otra compuerta; una orden externa aceptada produce `terminated` sólo si
-   precede al deadline observado. La precedencia es determinista y testeable
+3. **Precedencia fija y clasificación por causa** (segunda revisión
+   externa 2026-08-20, C6): deadline observado precede a presupuesto y a
+   toda otra compuerta. El supervisor distingue `soft_termination_at`
+   (inicio de la escalación, deadline efectivo menos gracia) y
+   `hard_deadline_at` (cota absoluta). El estado final se clasifica **por
+   causa**, no por instante:
+   - salida natural antes de iniciada la escalación → `executed`;
+   - escalación iniciada por agotamiento del plazo (aunque el proceso salga
+     por el SIGTERM de la gracia) → `deadline_exceeded`;
+   - terminación externa aceptada antes de iniciada la escalación →
+     `terminated`.
+   La precedencia y la clasificación son deterministas y testeables
    (criterio M2).
 4. **Ausencia honesta de resultado:** si el supervisor muere, no hay
    resultado y no se inventa estado (propuesta §11). Un observador externo

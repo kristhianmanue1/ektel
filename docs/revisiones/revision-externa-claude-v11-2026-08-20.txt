@@ -1,0 +1,55 @@
+El reporte es una afirmación; el repo es la evidencia. Verifico contra código antes de opinar.
+
+Ejecutó
+un comando
+
+Estado y suite confirmados. Ahora lo importante: si el contenido hace lo que el reporte dice. Empiezo por la prueba renombrada (mi hallazgo del F_FULLFSYNC).
+
+Ejecutado un comando, leyó test_host_characterization.py
+
+La prueba es honesta: nombre y docstring declaran explícitamente lo que no prueban. Ahora verifico si la tabla pública quedó coherente con eso.
+
+Leer
+claims-y-no-claims.md
+
+Los seis puntos de mi ronda anterior fueron adoptados (C2 corregido, "autenticada (MAC)", N14 nombrando lo que anula, N16 pareado con C6, nota de estado de evidencia, C7 condicional por plataforma). Ahora busco lo que sigue roto.
+
+Ejecutado 4 comandos
+Veredicto: el reporte es exacto — verificado, no aceptado por confianza
+
+Contrasté cada afirmación contra el repo. Todas se sostienen: HEAD 60f13de, árbol limpio, los 4 archivos existen, suite 8 tests OK con 3 skips, y la spec v1.1 efectivamente declara §21.1–§21.5 pendientes (línea 42) en vez de darlos por cerrados. Los seis puntos de mi ronda anterior fueron adoptados, y C2 quedó mejor de lo que pedí (protected_header_b64 + "." + payload_b64, con alg autenticado — cierra la maleabilidad y la sustitución de algoritmo).
+
+Dicho eso, quedan cinco defectos. Dos son de fondo.
+
+D1 · durable sigue siendo un nombre que su propia definición desmiente
+
+B8 redefinió durable como "protocolo de plataforma completado bajo supuestos declarados". Es decir: la palabra ya no significa lo que dice. El proyecto ya falló este mismo caso dos veces — executed cargó "nunca significa éxito", y la ronda pasada "firmada" → "autenticada (MAC)". Aquí se renombró honestamente la prueba (test_flush_primitive_available) pero se conservó el término del contrato.
+
+La inconsistencia es visible en el propio enum de ADR-007: junto a durable ya existe accepted_undemonstrated — prueba de que saben nombrar sin adornar cuando quieren. durable es el único que se resiste. Propongo renombrarlo (flush_protocol_completed) o, si se conserva, que lleve el desmentido pegado de forma permanente como lo lleva executed. Hoy un integrador lee durable y entiende "sobrevive a un corte"; el desmentido vive en C7 y N5, no en el nombre.
+
+D2 · "no es evidencia testeable" es un negativo afirmado sin evidencia — y es falso en dos tercios
+
+C7 dice que la supervivencia a corte de energía "no es evidencia testeable"; N5 dice "no testeable sin hardware". Eso cierra puertas que están abiertas:
+
+Nivel	Qué prueba	Requiere hardware
+1 · SIGKILL del escritor a mitad del protocolo	orden de operaciones y recuperación del sink	no
+2 · dm-log-writes / dm-flakey (Linux, device-mapper)	corta escrituras en las barreras; es la herramienta estándar de crash-consistency del kernel	no (VM)
+3 · corte físico real / dispositivo que ignora F_FULLFSYNC	supervivencia física	sí
+
+Solo el nivel 3 es lo que dicen. Declarar intestable el conjunto es, por la propia disciplina del proyecto, confundir no probado con no probable — y resulta especialmente delicado porque todo el hallazgo F_FULLFSYNC nació de documentación (clase D), no de ejecución.
+
+D3 · Una barra inclinada en un vocabulario que M0 exige cerrado
+
+ADR-004:56-58 dice que un crash tras el CAS de consumo y antes del spawn "deja el token gastado y produce ausencia/fallo recuperable". Son dos resultados observables distintos para el llamador: ausencia (N6) no es start_failed. El criterio de salida de M0 exige "vocabularios cerrados de estados y errores", y esta barra está justo en el camino más nuevo y menos revisado (B3). ADR-005 A3 ya fijó el principio —la ausencia se declara como tal, await_result no fabrica timeout sintético—, así que solo falta que ADR-004 nombre cuál de los dos aplica.
+
+D4 · N15 no tiene lápida en la tabla pública
+
+La tabla explica la retirada de C9 en su propio cuerpo, pero salta N14 → N16 sin nota; la explicación ("N15 reservado sin uso") vive solo en el acta de consenso. Como la tabla se define a sí misma como el lenguaje público autosuficiente, un hueco sin explicar invita a sospechar que se retiró un no-claim en silencio — justo la sospecha que la disciplina existe para evitar. Una línea.
+
+D5 · La caracterización de flush no registra el sistema de archivos
+
+El test usa tempfile.TemporaryFile(), que en Darwin cae en $TMPDIR (/var/folders/…) — no necesariamente el volumen donde vivirá el almacén del AuditSink. La semántica de F_FULLFSYNC depende del FS y del dispositivo, así que la evidencia es más débil de lo que aparenta. Barato: registrar f_fstypename vía statfs y sondear bajo el directorio configurado del sink, no bajo tmpdir.
+
+Sobre el paso 5: mi pase de hoy no sustituye la segunda revisión externa. Revisé la tabla y estas costuras concretas; el alcance que Codex define (estados, atomicidad de los dos CAS, límites de confianza sobre la v1.1 completa) es más amplio. Mantener esa independencia es correcto.
+
+D3 y D4 son defectos objetivos y puedo aplicarlos con acta. D1 y D2 cambian lenguaje público y clasificación de evidencia: son tuyos. ¿Aplico D3+D4 ahora y te dejo D1/D2 como propuesta de enmienda para tu veredicto?

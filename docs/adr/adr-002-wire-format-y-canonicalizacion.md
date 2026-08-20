@@ -41,6 +41,24 @@ versionados.
    como defensa en profundidad, ya no como pieza portante. Cambiar de
    familia criptográfica (p. ej. a firma asimétrica) exige **envelope v2**,
    no sólo un `alg` nuevo (B5).
+
+   **Perfil byte-exacto v1 (segunda revisión externa 2026-08-20, C2):** para
+   que dos implementaciones independientes produzcan firmas idénticas, v1
+   fija una única construcción sin alternativas:
+   - algoritmo: `HS256` fijo (HMAC-SHA256);
+   - codificación de `protected_header_b64`, `payload_b64` y `signature`:
+     **base64url sin padding** (RFC 4648 §5, sin `=`);
+   - entrada del MAC: `ASCII("ektel/<dominio>/v1") || 0x00 ||
+     ASCII(protected_header_b64) || "." || ASCII(payload_b64)` — los
+     dominios cerrados de ADR-003 punto 5;
+   - campos de longitud: enteros de 32 bits **big-endian** cuando un
+     prefijo de longitud sea necesario (ADR-003 punto 5);
+   - orden de verificación: localizar `signature` por parseo superficial,
+     verificar el MAC, y **sólo después** decodificar el protected header
+     y el payload; el protected header decodificado nunca alimenta la
+     verificación que lo cubre.
+   Cualquier cambio de algoritmo, codificación, dominio o construcción es
+   envelope v2. No existe perfil alternativo «equivalente» en v1.
 3. **Ningún esquema de canonicalización JSON (JCS u otro) entra en v1.** La
    canonicalización existe sólo como concepto interno de pruebas (vectores
    dorados), no como requisito del productor ni del verificador.
