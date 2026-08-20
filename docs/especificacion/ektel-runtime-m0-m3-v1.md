@@ -1,9 +1,9 @@
 # Especificación ektel — runtime mínimo M0–M3, v1.2
 
-**Estado:** candidata a especificación adoptada, para consenso del dueño.
-La segunda revisión externa (Codex, C1–C6) y el pase de verificación
-(Claude, D1–D5) están aplicados; el cierre restante es: revisión cruzada
-final ADR/tabla/especificación → consenso explícito → autorización de M0.
+**Estado:** **adoptada** — consensuada por el dueño el 2026-08-20
+(`docs/decisiones/consenso-especificacion-v1-2-2026-08-20.md`); M0 autorizado
+por `docs/decisiones/autorizacion-m0-2026-08-20.md`. Toda enmienda posterior
+requiere acta explícita.
 **Versión del documento:** 1.2 (2026-08-20) — regenerada desde el acta
 `docs/decisiones/enmienda-transversal-v3-2026-08-20.md`; v1.0 y v1.1 quedan
 superadas antes de consenso.
@@ -33,18 +33,14 @@ Este documento funde en una sola fuente normativa:
   `enmienda-transversal-v3-2026-08-20.md` (C1–C6 de Codex y D1–D5 de
   Claude).
 
-Ante conflicto, y **una vez consensuada esta especificación**: manda este
-documento; después los ADR; después la tabla pública para lenguaje externo;
-la propuesta y los documentos anteriores son evidencia de evolución, no
-fuentes normativas. **Mientras sea candidata, mandan los ADR y las actas**
-(I3 de la segunda ronda externa: una candidata no puede prevalecer sobre lo
-que aún no la adopta). La evidencia reproducible manda sobre cualquier
-promesa narrativa (propuesta §2).
+Ante conflicto, **desde el consenso del 2026-08-20**: manda este documento;
+después los ADR; después la tabla pública para lenguaje externo; la propuesta
+y los documentos anteriores son evidencia de evolución, no fuentes normativas.
+La evidencia reproducible manda sobre cualquier promesa narrativa (propuesta
+§2).
 
-**Esto no autoriza M0.** La autorización de M0 es un acto separado
-(propuesta §21.6), posterior a la revisión cruzada final y al consenso
-explícito de esta v1.2; hasta entonces no se afirma que §21.1–§21.5 estén
-cerrados.
+**M0 está autorizado** por acta separada
+(`docs/decisiones/autorizacion-m0-2026-08-20.md`, propuesta §21.6); M1–M3 no.
 
 ## 1. Decisión adoptada
 

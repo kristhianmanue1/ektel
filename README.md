@@ -49,10 +49,15 @@ una sola de las magnitudes que restringe.
 
 ## Siguiente paso
 
-Llevar el candidato documental a consenso sobre alcance G0-first, capacidad
-raíz, descriptor y estados. La caracterización autorizada ya cubre cuatro
-casos seguros en Darwin; falta ejecutarla y ampliarla en Linux. Hasta entonces
-no se promueven límites de recursos por acuerdo verbal.
+La especificación M0–M3 v1.2 alcanzó consenso el 2026-08-20
+(`docs/decisiones/consenso-especificacion-v1-2-2026-08-20.md`) y M0 quedó
+autorizado con alcance cerrado
+(`docs/decisiones/autorizacion-m0-2026-08-20.md`). La caracterización de
+plataforma ya se ejecutó en Darwin (5 tests + 3 skips Linux-only) y en Linux
+(8/8, `docs/evidencia/caracterizacion-linux-2026-08-20.md`). Sigue pendiente
+la **ampliación** de esa suite: durabilidad bajo fallo y RSS por muestreo
+(Y-1, Y-2). Hasta entonces no se promueven límites de recursos por acuerdo
+verbal.
 
-La [propuesta de arquitectura M0–M3](docs/propuestas/propuesta-runtime-minimo-m0-m3-2026-08-17.md)
-organiza ese posible primer ciclo sin autorizar todavía su implementación.
+La [especificación M0–M3](docs/especificacion/ektel-runtime-m0-m3-v1.md)
+gobierna ese primer ciclo; M1 y posteriores no están autorizados.
