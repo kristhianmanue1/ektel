@@ -1,9 +1,10 @@
 # Acta — autorización de M0
 
 **Fecha:** 2026-08-20.
-**Autoridad:** autorización explícita del dueño, conforme al §21.6 de la
-especificación v1.2 (consensuada en
-`consenso-especificacion-v1-2-2026-08-20.md`).
+**Autoridad:** autorización explícita del dueño, conforme al criterio de
+adopción de la especificación v1.2, **§19 punto 6** (que recoge la propuesta
+histórica §21; la especificación vigente no tiene §21), sobre la especificación
+consensuada en `consenso-especificacion-v1-2-2026-08-20.md`.
 
 ## Objeto
 
@@ -43,5 +44,6 @@ compromiso de estabilidad en este hito.
 ## Evidencia de soporte
 
 - Consenso v1.2: `consenso-especificacion-v1-2-2026-08-20.md`.
-- Caracterización Linux de la suite vigente (8/8):
+- Caracterización Linux de la suite vigente (8/8, snapshot 2026-08-20,
+  **clase L** — ejecución local única, no V ni R):
   `docs/evidencia/caracterizacion-linux-2026-08-20.md`.

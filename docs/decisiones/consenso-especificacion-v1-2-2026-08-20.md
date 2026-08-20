@@ -1,8 +1,9 @@
 # Acta — consenso de la especificación ektel runtime mínimo M0–M3, v1.2
 
 **Fecha:** 2026-08-20.
-**Autoridad:** consenso explícito del dueño, conforme al §0 y §21 de la propia
-especificación.
+**Autoridad:** consenso explícito del dueño, conforme al §0 de la propia
+especificación y a su criterio de adopción (§19, que recoge la propuesta
+histórica §21; la especificación vigente no tiene §21).
 
 ## Objeto
 
@@ -26,6 +27,13 @@ Este acta declara explícitamente que los ADR **002, 003, 004, 005, 007, 008 y
 009**, enmendados tras el consenso del 2026-08-19, quedan **cubiertos por el
 presente consenso** en su texto vigente a la fecha. Ninguna enmienda posterior
 al 2026-08-19 queda fuera del acto.
+
+Nota de trazabilidad (Y-6): el hallazgo original identificaba las enmiendas de
+ADR-005, ADR-007 y ADR-008 en el rango `fecf1b3` → `82f7a19` (renombre
+`durable` → `flush_protocol_completed`, tipos de resultado por operación, C8
+retirado). La verificación contra las dos actas de enmienda muestra que el
+conjunto real enmendado post-consenso es el superset arriba listado; este acta
+cubre el superset completo, que incluye los tres ADR señalados por Y-6.
 
 Queda asentada la regla de gobernanza ya practicada: **toda enmienda
 posterior a este consenso requiere su propio acta explícita**; no hay
