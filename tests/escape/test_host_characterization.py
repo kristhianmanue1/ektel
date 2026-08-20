@@ -201,6 +201,31 @@ print(usage.ru_utime + usage.ru_stime, flush=True)
             "la hipotesis de perdida no aplica en este kernel",
         )
 
+    @unittest.skipUnless(SYSTEM in {"Darwin", "Linux"}, "Darwin/Linux only")
+    def test_durable_receipt_flush_platform_semantics(self) -> None:
+        """Caracteriza la primitiva de flush usada por el recibo `durable`.
+
+        Base documental (clase D): en Darwin, `fsync()` no vacía la caché
+        del disco; Apple exige `fcntl(F_FULLFSYNC)` para esa garantía. En
+        Linux, `fsync()` estándar es la primitiva correcta. Este test
+        caracteriza disponibilidad y semántica de la API; la supervivencia
+        real a un corte de energía no es testeable sin hardware y queda
+        como supuesto declarado (N5 de docs/claims-y-no-claims.md).
+        """
+        import fcntl
+        import tempfile
+
+        with tempfile.TemporaryFile() as handle:
+            handle.write(b"ektel-durable-probe")
+            os.fsync(handle.fileno())
+            if SYSTEM == "Darwin":
+                self.assertTrue(
+                    hasattr(fcntl, "F_FULLFSYNC"),
+                    "Darwin sin F_FULLFSYNC: no hay primitiva de flush real",
+                )
+                fcntl.fcntl(handle.fileno(), fcntl.F_FULLFSYNC)
+            # Linux: fsync estándar ya ejecutado arriba es la primitiva.
+
     @unittest.skipUnless(SYSTEM == "Linux", "PR_SET_CHILD_SUBREAPER is Linux-only")
     def test_subreaper_recovers_orphaned_grandchild_cpu(self) -> None:
         code = """

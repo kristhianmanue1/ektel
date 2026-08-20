@@ -38,9 +38,16 @@ AuditSink y formato de recibo (propuesta §20).
 
 3. **Garantía mínima del sink durable de referencia (M3):** append con
    fsync de archivo y directorio antes de emitir recibo `durable` (perfil
-   `posix-fsync-dir/v1`, el mismo adoptado por AN-KLA en este repositorio).
-   Sinks que no puedan demostrar durabilidad sólo pueden emitir
-   `accepted_undemonstrated`.
+   `posix-fsync-dir/v1`, el mismo adoptado por AN-KLA en este repositorio),
+   con corrección por plataforma: en Darwin `fsync()` no vacía la caché
+   del disco y el sink debe usar `fcntl(F_FULLFSYNC)`; en Linux el fsync
+   estándar basta (base documental clase D, caracterización de API en
+   `tests/escape/test_host_characterization.py::test_durable_receipt_flush_platform_semantics`).
+   La supervivencia real a corte de energía no es testeable sin hardware:
+   es supuesto declarado (N5 de la tabla pública), no evidencia. El perfil
+   `posix-fsync-dir/v1` de AN-KLA tiene la misma limitación en macOS; se
+   declara aquí sin modificar AN-KLA. Sinks que no puedan demostrar
+   durabilidad sólo pueden emitir `accepted_undemonstrated`.
 
 4. **Fail-closed:** cuando el despliegue declare auditoría obligatoria, un
    evento previo al inicio que no logra recibo `durable` rechaza el inicio
@@ -111,6 +118,7 @@ amenaza de M0–M3 (ADR-001). Criterio de revisión §6.
 | A2 | fsync por evento puede colapsar throughput de eventos. | **Refutada parcialmente:** M0–M3 emiten decenas de eventos por acción, no miles por segundo; si una carga real lo contradice, el batching con recibo agregado es propuesta v2, no relajación silenciosa. |
 | A3 | Un `append` que devuelve `durable` pero miente (fsync falló y el sink no lo notó) es indetectable. | **Refutada:** la honestidad del sink es responsabilidad del adaptador del operador; ektel declara la clase devuelta, no audita el disco del sink. Ya cubierto por "accepted_undemonstrated" para sinks que no pueden demostrar. |
 | A4 | `received_at_wall` del sink es reloj no confiable y rompe orden global. | **Incorporada:** el recibo declara que su timestamp es wall del sink, sin orden global; el orden causal lo dan `sequence` y `causal_parent_ids` (§10.3.1–2), no el reloj. |
+| A5 | En Darwin, `fsync()` devuelve 0 sin vaciar la caché del disco: el sink puede emitir `durable` y un corte de energía pierde el evento — fallo silencioso (veredicto externo sobre tabla pública, 2026-08-19). | **Incorporada:** garantía mínima corregida por plataforma (punto 3): `F_FULLFSYNC` en Darwin, fsync estándar en Linux; supervivencia a apagón declarada como supuesto no testeable (N5), no como evidencia. |
 
 ## 6. Criterio de revisión
 

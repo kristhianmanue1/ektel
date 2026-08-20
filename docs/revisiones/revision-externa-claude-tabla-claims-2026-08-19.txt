@@ -1,0 +1,30 @@
+Veredicto: la tabla es sólida y publicable — con 2 defectos bloqueantes y 1 de lenguaje
+La estructura es correcta: 9 claims / 14 no-claims, casi todos apareados (cada claim fuerte tiene su no-claim que lo acota), y la retirada de C9 sin reutilizar el identificador cumple la regla §15.4 del propio proyecto. Los tres que te incomodan —N1, N8, N14— deben quedarse tal cual: que incomoden es la señal de que la tabla funciona. Mis objeciones están en otro lado.
+
+B1 · Bloqueante: C2 contradice el ADR que cita
+El archivo commiteado dice "HMAC-SHA256 sobre bytes transportados" (claims-y-no-claims.md:17). Pero ADR-002:24 fija firma sobre "la cadena de caracteres base64 del payload tal como viaja", y ADR-003:51 dice literalmente 'ya no "bytes transportados" a secas' (corrección F1).
+
+Esto no es cosmético: F1 nació precisamente porque "bytes transportados" admitía maleabilidad del relleno base64 — cuatro sobres distintos byte a byte con el mismo payload. La redacción obsoleta reabre, en el lenguaje público, el agujero que F1 cerró en el contrato. Tu versión pegada ("texto base64") es la correcta; el archivo del repo está desactualizado. Corrección de una línea.
+
+B2 · Bloqueante: C7 afirma durabilidad que Darwin no da, y falla en silencio
+C7 promete recibo durable vía "fsync de archivo y directorio" (perfil posix-fsync-dir/v1). En macOS fsync() no vacía la caché de escritura del disco — Apple exige F_FULLFSYNC para eso. Verificado ahora mismo en este host: fcntl.F_FULLFSYNC existe (valor 51) en Darwin 25.5.0, y es un fcntl distinto de os.fsync().
+
+Esto es exactamente el patrón RLIMIT_AS repitiéndose en otro subsistema: una primitiva POSIX que en Darwin se comporta distinto de lo asumido, y cuyo modo de fallo es F-S (silencioso) — fsync() devuelve 0, el sink emite durable, y un corte de energía se lleva el evento. La ronda adversarial de ADR-007 cubrió throughput (A2) y sinks mentirosos (A3), pero no cubrió la semántica de la plataforma. Y no hay ninguna prueba de durabilidad en tests/escape/, así que C7 se apoya hoy en documentación (D), no en evidencia (V/L) — justo lo que la metodología del proyecto prohíbe.
+
+Nota lateral pertinente: ADR-007 dice que ese perfil es "el mismo adoptado por AN-KLA en este repositorio", así que el hallazgo alcanza también al store de memoria del propio repo.
+
+Dos salidas honestas (elige, no ambas): (a) el sink de referencia usa F_FULLFSYNC en Darwin y se caracteriza como todo lo demás; o (b) C7 se vuelve condicional por plataforma y N5 gana una línea de durabilidad.
+
+M1 · No bloqueante: "identidad firmada" con un MAC
+El README prohíbe expresiones como "límites duros" sin calificador. "Firmada" implica firma y no-repudio; HMAC autentica, no firma. N8 lo desmiente después — pero un claim no debería necesitar un no-claim para des-decir una palabra. Propongo "identidad autenticada (MAC)" en la prosa pública. El campo alg: HS256 puede quedarse: JWS mismo llama a HS256 "signature or MAC".
+
+(Para que conste: HMAC no es un descuido. ADR-003 lo decide con alternativas, razón primaria correcta —un operador, un host— y degrada explícitamente el argumento stdlib a secundario tras F6. Buen ADR.)
+
+Lo que le falta a la tabla
+1. Los no-claims no dicen qué claims anulan. Es el hueco estructural más serio. N14 dice que proteger la clave es del despliegue; con HMAC simétrico, una clave filtrada permite fabricar capacidades y eventos de auditoría — es decir, anula C1, C2, C7 y C8 a la vez, en silencio. ADR-003 A1 trató el ataque, pero el efecto compuesto es invisible en la tabla. Propongo que N14 (y N1) nombren explícitamente los claims que invalidan si su supuesto cae.
+
+2. Falta N16, y se deduce de tu propia estructura. C6 es el único claim sin no-claim pareado. C6 afirma presencia de un Allow, no corrección de la política: ektel no valida que el adaptador externo decida bien, a tiempo, ni que honre valid_until. Un lector convierte C6 en "la política se aplica correctamente". Falta decirlo.
+
+3. Cada claim debería llevar su estado de evidencia. Hoy los 9 están en P (propuesta) bajo la taxonomía §2.1 del propio proyecto, pero la tabla solo lo dice una vez, en genérico ("una vez probado"). Propongo columna estado de evidencia + prueba que lo falsaría, para que "probado" no sea un juicio de opinión.
+
+No edité claims-y-no-claims.md: está bajo consenso y B1/B2 cambian lenguaje público, que por tu propia regla de autoridad no me toca decidir. ¿Aplico B1 (corrección objetiva de una línea) y preparo B2 como prueba de caracterización fsync vs F_FULLFSYNC en Darwin, al estilo de la suite existente, para que la decides con evidencia en vez de con mi argumento?
