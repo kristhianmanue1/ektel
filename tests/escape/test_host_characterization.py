@@ -163,6 +163,7 @@ time.sleep(30)
         finally:
             parent.kill()
             parent.wait()
+            parent.stdout.close()
 
     @unittest.skipUnless(SYSTEM == "Linux", "PR_SET_CHILD_SUBREAPER is Linux-only")
     def test_orphaned_grandchild_cpu_is_lost_without_subreaper(self) -> None:
@@ -243,11 +244,13 @@ print(usage.ru_utime + usage.ru_stime, flush=True)
                 fcntl.fcntl(handle.fileno(), fcntl.F_FULLFSYNC)
             # Linux: fsync estándar ya ejecutado arriba es la primitiva.
             # D5: registrar el volumen sondeado (dispositivo y montaje).
-            mounts = {
-                fields[0]
-                for line in open("/proc/mounts", encoding="utf-8")
-                if (fields := line.split())
-            } if SYSTEM == "Linux" else set()
+            mounts: set[str] = set()
+            if SYSTEM == "Linux":
+                with open("/proc/mounts", encoding="utf-8") as stream:
+                    for line in stream:
+                        fields = line.split()
+                        if fields:
+                            mounts.add(fields[0])
             self.assertGreater(probe_stat.st_dev, 0)
             if SYSTEM == "Linux":
                 self.assertTrue(mounts, "no se pudo leer /proc/mounts")
