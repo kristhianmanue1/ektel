@@ -19,7 +19,7 @@
    "wire_type": "admission-outcome",
    "description": "AdmissionRejected con código cerrado.",
    "encoding": "base64",
-   "bytes": "eyJvdXRjb21lIjoiYWRtaXNzaW9uX3JlamVjdGVkIiwicmVhc29uX2NvZGUiOiJjYXBhYmlsaXR5X2V4cGlyZWQiLCJyZXRyeWFibGUiOmZhbHNlLCJzYWZlX2RldGFpbCI6ImNhcGFiaWxpdHkgZXhwaXJhZGEiLCJzY2hlbWFfdmVyc2lvbiI6MX0",
+   "bytes": "eyJvdXRjb21lIjoiYWRtaXNzaW9uX3JlamVjdGVkIiwicmVhc29uX2NvZGUiOiJjYXBhYmlsaXR5X3JlamVjdGVkIiwicmV0cnlhYmxlIjpmYWxzZSwic2FmZV9kZXRhaWwiOiJjYXBhYmlsaXR5IHJlY2hhemFkYSIsInNjaGVtYV92ZXJzaW9uIjoxfQ",
    "expect": {
     "verdict": "accept",
     "diagnostic": "ok"
@@ -30,7 +30,7 @@
    "wire_type": "admission-outcome",
    "description": "budget_exceeded no existe en v1 (§8.3).",
    "encoding": "base64",
-   "bytes": "eyJvdXRjb21lIjoiYWRtaXNzaW9uX3JlamVjdGVkIiwicmVhc29uX2NvZGUiOiJidWRnZXRfZXhjZWVkZWQiLCJyZXRyeWFibGUiOmZhbHNlLCJzYWZlX2RldGFpbCI6ImNhcGFiaWxpdHkgZXhwaXJhZGEiLCJzY2hlbWFfdmVyc2lvbiI6MX0",
+   "bytes": "eyJvdXRjb21lIjoiYWRtaXNzaW9uX3JlamVjdGVkIiwicmVhc29uX2NvZGUiOiJidWRnZXRfZXhjZWVkZWQiLCJyZXRyeWFibGUiOmZhbHNlLCJzYWZlX2RldGFpbCI6ImNhcGFiaWxpdHkgcmVjaGF6YWRhIiwic2NoZW1hX3ZlcnNpb24iOjF9",
    "expect": {
     "verdict": "reject",
     "diagnostic": "invalid_value"

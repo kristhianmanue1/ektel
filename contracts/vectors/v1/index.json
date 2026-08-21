@@ -6,6 +6,7 @@
   "action-request",
   "admission-token",
   "capability-envelope",
+  "correccion-m0",
   "invocation-proof",
   "outcomes",
   "termination-token"

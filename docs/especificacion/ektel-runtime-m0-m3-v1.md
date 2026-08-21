@@ -6,7 +6,9 @@ por `docs/decisiones/autorizacion-m0-2026-08-20.md`. Toda enmienda posterior
 requiere acta explícita.
 **Versión del documento:** 1.2 (2026-08-20) — regenerada desde el acta
 `docs/decisiones/enmienda-transversal-v3-2026-08-20.md`; v1.0 y v1.1 quedan
-superadas antes de consenso.
+superadas antes de consenso. Enmendada tras la doble NO-GO externa de M0 por
+`docs/decisiones/enmienda-correccion-m0-2026-08-20.md` (canonicalidad
+base64url ADR-010, precedencia de diagnósticos, vocabularios y asientos).
 **Versión de los contratos:** `schema_version` v1 en todos los wire types.
 
 ## 0. Autoridad y genealogía
@@ -103,30 +105,129 @@ reemplazable y no forma parte del modelo de autorización.
 
 1. JSON UTF-8 estricto: se rechazan NaN/Infinity, claves duplicadas,
    campos desconocidos (salvo extensión versionada explícita), tipos
-   coercionados y documentos que excedan los límites de tamaño declarados
-   por tipo.
+   coercionados (bool no es int) y documentos que excedan el **techo global
+   de 64 KiB por documento** (enmienda corrección M0 2026-08-20: no hay
+   límites por tipo; el techo global ES la regla, sin ambigüedad). Un
+   documento cuya **profundidad de anidamiento** exceda la capacidad del
+   decodificador JSON —aunque su tamaño quede dentro del techo— se
+   rechaza **fail-closed como `malformed_json`** (asiento
+   M0-FAR-CLAUDE-01): ningún parser de referencia debe propagar
+   excepción alguna por anidamiento.
 2. Sobre v1 de estructura fija `{protected_header_b64, payload_b64,
    signature}`. La firma y el `identity_digest` se computan sobre los bytes
    ASCII de `protected_header_b64 + "." + payload_b64` **tal como viajan**,
    estilo JWS — no sobre los bytes decodificados ni sobre el sobre
-   completo. El protected header contiene `alg` y `schema_version`, de modo
-   que **el algoritmo queda autenticado** (B5). El receptor verifica
-   **antes** de decodificar y nunca re-serializa para verificar. El
-   decodificado base64 estricto es defensa en profundidad, no pieza
-   portante. Cambiar de familia criptográfica exige **envelope v2**, no
-   sólo un `alg` nuevo. **Perfil byte-exacto v1 (C2):** `HS256` fijo;
-   base64url **sin padding** para `protected_header_b64`, `payload_b64` y
-   `signature`; entrada del MAC = `ASCII("ektel/<dominio>/v1") || 0x00 ||
-   ASCII(protected_header_b64) || "." || ASCII(payload_b64)`; longitudes de
-   32 bits big-endian donde apliquen; orden de verificación: localizar
-   `signature` por parseo superficial, verificar el MAC y sólo después
-   decodificar header y payload. No existe perfil alternativo
-   «equivalente» en v1.
+    completo. El protected header contiene `alg` y `schema_version`, de modo
+    que **el algoritmo queda autenticado** (B5). **Orden de verificación
+    del receptor (corrección H1, cuatro pasos congelados):**
+    (1) localizar y validar la **estructura exterior** del sobre (JSON
+    estricto, campos exactos, tipos);
+    (2) comprobar **alfabeto, padding y canonicalidad base64url** de
+    `protected_header_b64`, `payload_b64` y `signature` — decodificando y
+    re-encodificando como **test de pertenencia al conjunto canónico**,
+    SIN interpretar el JSON que transportan. La canonicalidad es
+    **precondición de admisión**, no defensa en profundidad: un alias no
+    canónico de los mismos bytes se rechaza con `bad_base64` AUNQUE su
+    MAC sea válida para esa cadena (ADR-010);
+    (3) verificar el **MAC sobre las cadenas ASCII originales** tal como
+    viajan (`bad_base64` precede inequívocamente a `bad_signature`,
+    punto 6);
+    (4) sólo después **interpretar y validar semánticamente** header y
+    payload. En ningún paso se re-serializa para verificar.
+    Cambiar de familia criptográfica exige **envelope v2**, no
+    sólo un `alg` nuevo. **Perfil byte-exacto v1 (C2):** `HS256` fijo;
+    base64url **sin padding y canónico** para `protected_header_b64`,
+    `payload_b64` y `signature` — los bits residuales deben ser cero y el
+    receptor lo comprueba re-codificando (**ADR-010**, cierra la
+    maleabilidad de firma y la inestabilidad de `identity_digest` frente a
+    re-encoding); entrada del MAC = `ASCII("ektel/<dominio>/v1") || 0x00 ||
+    ASCII(protected_header_b64) || "." || ASCII(payload_b64)`; longitudes de
+    32 bits big-endian donde apliquen. No existe perfil alternativo
+    «equivalente» en v1. La regla de canonicalidad aplica a **todo** campo
+    base64url de los schemas (p. ej. `stdin_policy.data_b64`).
 3. Ningún esquema de canonicalización JSON entra en v1.
 4. Cada wire type v1 tiene vectores dorados (bytes + digest esperado +
    diagnóstico esperado) consumibles por todo parser de referencia.
-5. Cada wire type lleva `schema_version`; el núcleo rechaza versiones
-   mayores desconocidas.
+5. Cada wire type lleva `schema_version`; regla uniforme (corrección
+   FIX-AND-RETRY 2, B8): entero **mayor que 1** →
+   `schema_version_unsupported` (versión mayor desconocida; aplica al
+   documento, al invocation-proof y a header/payload firmados); entero
+   **<= 0** → `invalid_value` (valor inválido, no versión desconocida;
+   cae en la validación de valor respetando la precedencia del punto 6);
+   **booleano** → `invalid_value` (bool no es int, §5.1).
+6. **Precedencia de diagnósticos de parser (fija, corrección M0):**
+   `size_exceeded` → `malformed_json` → `duplicate_key` →
+   `schema_version_unsupported` (documento) → `unknown_field` →
+    `missing_field` → `invalid_type` → `invalid_value`. En sobres firmados
+    los tres campos se validan **por campo, en el orden declarado por el
+    schema** (`protected_header_b64` → `payload_b64` → `signature`),
+    aplicando en cada uno sus chequeos propios — patrón/longitud →
+    `invalid_value` (p. ej. `signature` ≠ 43 chars, acta §12) y
+    alfabeto/canonicalidad → `bad_base64` (paso 2 de §5.2) — todo antes
+    del MAC; en el caso compuesto gana el primer campo ofensivo del
+    orden del schema — luego → `bad_signature` (MAC; paso 3) → header
+    (`alg_unsupported`,
+    `schema_version_unsupported`, `typ` discordante → `invalid_value`) →
+    validación del payload (paso 4). La validación semántica de header y
+    payload ocurre SIEMPRE después de una MAC válida (§5.2): una mutación de
+    payload con MAC rota produce `bad_signature`, no un error de campo; y
+    un alias no canónico con MAC válida produce `bad_base64`, no
+    `bad_signature`. Dentro de
+    un documento, los valores de campo se comprueban en el orden declarado
+    por el schema, no en el orden del documento recibido.
+7. **Semántica de `pattern` y `format` en los schemas (corrección
+    FIX-AND-RETRY 2026-08-20):** `pattern` conserva la semántica de JSON
+    Schema Draft 2020-12 — regex ECMA-262, coincidencia NO anclada. Ningún
+    parser o documento del proyecto la redefine como fullmatch. Los
+    patrones de `contracts/schemas/v1` van **auto-anclados** (`^` al
+    inicio, `(?![\s\S])` como fin absoluto de cadena), de modo que cada
+    schema rechaza por sí mismo prefijos, sufijos y salto de línea final —
+    incluido ante validadores cuyo motor ancle `$` antes de un `\n` final
+    (p. ej. `re.search` de Python). **Saltos de línea, semántica
+    independiente del motor (corrección H5 del gate Claude, 2026-08-21):**
+    donde un campo prohíba saltos de línea, el patrón lo expresa con una
+    **clase de caracteres negada explícita** que excluye `CR`, `LF`,
+    `U+2028` y `U+2029` (p. ej. `^/[^\r\n\u2028\u2029]*$`-con-fin-absoluto
+    en `command_absolute`/`cwd`) — **nunca** confiando en la semántica de
+    `.` de ningún motor (ECMA-262 excluye los cuatro; Python `re` sólo
+    `LF`): los parsers ektel y un validador Draft 2020-12 conforme deben
+    coincidir en esas cuatro clases de carácter. Los patrones existentes
+    de alfabeto cerrado (base64url, hex) ya son inmunes por construcción.
+    `format: ektel-b64u-canonical` es un
+    formato **privado**: en JSON Schema, `format` es anotación salvo
+    aserción explícita del consumidor; un validador genérico NO comprueba
+    la canonicalidad (ADR-010) si no registra ese formato — los parsers de
+    referencia ektel sí lo asertan (`bad_base64`). Los outcomes cierran
+    campos desconocidos por el schema mismo con `unevaluatedProperties:
+    false` (Draft 2020-12), compatible con la unión discriminada `oneOf`
+    de §8.3: una propiedad sólo es válida si la evalúa la raíz o la
+    alternativa elegida. Para validar con un consumidor genérico: registrar
+    TODOS los schemas locales por su `$id` (`https://ektel.local/…`),
+    NO resolver ese host por red (dominio privado declarativo) y registrar
+    y asertar el formato `ektel-b64u-canonical` — prueba de referencia:
+    `scripts/validate_with_jsonschema.py`.
+8. **Semántica de `accept` (corrección H2, congelada):** el veredicto
+    `accept` de un parser de referencia significa **aceptación del parser
+    para el wire type solicitado** — el documento es sintáctica y
+    estructuralmente válido contra el contrato v1 — y **nada más**: no
+    significa autorización, admisión, aprobación de política ni permiso
+    de ejecución. Precisión por wire type:
+    - Al parsear un **capability envelope, admission-token,
+      termination-token o invocation-proof como objeto superior**, el
+      parser aplica TODAS sus verificaciones criptográficas (MAC, PoP):
+      un `accept` ahí sí implica autenticidad de ese objeto.
+    - Al parsear un **action-request**, M0 valida **sólo la estructura
+      del documento exterior** (incluida la forma base64url canónica de
+      los campos anidados): la firma del sobre anidado, la PoP anidada,
+      el replay y la coherencia semántica entre objetos anidados y el
+      descriptor (p. ej. `command_absolute` del descriptor vs
+      `action_binding.command_absolute` de la capacidad) **pertenecen a
+      la admisión M1**, no al parser de contrato M0. Un action-request
+      con firma anidada inválida o con incoherencia de comando es
+      `accept/ok` en M0 por diseño — la frontera está congelada por
+      vectores (`areq-valid-nested-*`) y su violación es defecto M0.
+    Ningún campo de metadatos se añade a los schemas actuales para
+    transportar esta semántica: es regla del parser, no del wire.
 
 ## 6. Identidad y capacidad (ADR-003, formaliza D7a)
 
@@ -159,24 +260,42 @@ reemplazable y no forma parte del modelo de autorización.
 5. `identity_digest`: SHA-256 de la cadena autenticada
    `protected_header_b64 + "." + payload_b64`; incluye
    `artifact_identity_profile` y nonce. Dos serializaciones distintas son
-   identidades distintas.
+   identidades distintas. **Precisión de alcance (FIX-AND-RETRY
+   2026-08-20, ADR-010 §6):** la canonicalidad base64url cierra los
+   aliases no canónicos *de los mismos bytes decodificados*; no afirma
+   identidad estable entre serializaciones JSON semánticamente
+   equivalentes — claves reordenadas o espacios distintos son bytes
+   distintos y digests distintos, por diseño. v1 identifica el wire
+   autenticado, no una forma normalizada del documento.
 6. `admitted_action`: valor opaco = `identity_digest` + MAC interno de
    admisión + expiry; `start` re-verifica integridad, vigencia y consumo
-   único. La reserva del nonce y el consumo del token son **dos registros
-   CAS durable distintos** (§7.4): `nonce_reservation` en `admit` y
-   `start_token_consumption` inmediatamente antes del spawn; un crash entre
-   el CAS y el spawn deja el token permanentemente gastado y produce
-   `start_failed_indeterminate` — nunca habilita replay (B3, C4).
+   único. **Forma de cable (corrección M0 2026-08-20, la implementación es
+   mejor que la letra anterior):** el token de admisión es un **sobre firmado
+   estándar** (§5.2, dominio `ektel/admission/v1`) cuyo payload v1 es
+   `{schema_version, identity_digest, action_id, exp, issuer_id}` — la
+   construcción sobre-JWS elimina la ambigüedad de concatenación de la
+   redacción anterior. La reserva del nonce y el consumo del token son
+   **dos registros CAS durable distintos** (§7.4): `nonce_reservation` en
+   `admit` y `start_token_consumption` inmediatamente antes del spawn; un
+   crash entre el CAS y el spawn deja el token permanentemente gastado y
+   produce `start_failed_indeterminate` — nunca habilita replay (B3, C4).
 7. Gestión de claves: archivo del operador con permisos `0600`, fuera del
    descriptor y de los eventos. Rotación = reemisión; sin jerarquía ni
    delegación (D2). Los eventos y resultados nunca registran la clave ni
    el HMAC completo: sólo `key_id` (digest truncado de la clave con sal de
    despliegue).
 8. **`ExecutionHandle` (B2, C5):** lo emite `start` exitoso; porta un token
-   opaco de terminación (MAC con dominio `ektel/termination/v1` sobre
-   `action_id || identity_digest`). Es local al proceso supervisor, opaco,
-   no serializable, confidencial (redactado en logs y eventos) e inválido
+   opaco de terminación con forma de **sobre firmado estándar** (§5.2,
+   dominio `ektel/termination/v1`; payload v1 `{schema_version, action_id,
+   identity_digest}` — corrección M0 2026-08-20, misma razón que §6.6). Es
+   local al proceso supervisor, opaco,
+   no serializable, confidencial (redactado en logs y eventos; en el cable
+   sólo circula su `handle_ref` para correlación) e inválido
    tras reiniciar el supervisor; no es una capacidad bearer persistible.
+9. **Ventana de vigencia no vacía (corrección M0):** todo payload de
+   capacidad exige `exp > nbf`; `exp <= nbf` se rechaza como
+   `invalid_value` en el parser de contrato, antes de cualquier lógica de
+   admisión.
 
 El descriptor no contiene secretos (R2): los eventos registran el entorno
 sólo por digest o forma redactada (§10).
@@ -282,11 +401,35 @@ ExecutionResult   (sólo post-inicio) = executed | deadline_exceeded | terminate
 Vocabulario cerrado y versionado: los rechazos de admisión (descriptor mal
 formado, capacidad inválida/expirada/reutilizada con `reason_code`
 `capability_rejected`, política, auditoría) viven en `AdmissionRejected`;
-`start_failed` y `start_failed_indeterminate` (crash tras el CAS de consumo
-y antes del spawn, §7.4) son códigos de `StartFailed`; los estados de
-ejecución son sólo los cuatro post-inicio. Una terminación sin handle
+`start_failed`, `start_failed_indeterminate` (crash tras el CAS de consumo
+y antes del spawn, §7.4) **y `capability_rejected`** (perdedor de un `start`
+concurrente, §7.4 — enmienda corrección M0 2026-08-20: resuelve el conflicto
+interno entre §7.4, que lo exige, y la redacción anterior de esta sección,
+que lo negaba; posición verificada por Pinax en la ronda externa) son
+códigos de `StartFailed`; los estados de ejecución son sólo los cuatro
+post-inicio. Una terminación sin handle
 válido produce `TerminationRejected` (código `capability_rejected`), no un
 estado de ejecución.
+
+Asientos añadidos por la corrección M0 (2026-08-20), que faltaban en la
+letra:
+
+- **Códigos cerrados de `AdmissionRejected`:** `malformed_descriptor`,
+  `capability_rejected`, `policy_denied`, `policy_unavailable`,
+  `audit_unavailable`, `guarantee_unsupported` (este último con causa en
+  §6.1: perfil de garantía no soportado). Los códigos `capability_invalid`,
+  `capability_expired` y `capability_reused` **no existen**: la distinción
+  inválida/expirada/reutilizada se colapsa en `capability_rejected`.
+- **Uniones discriminadas:** los outcomes se validan por alternativa —
+  los campos de una alternativa son obligatorios en ella y prohibidos en
+  las demás (`started` exige `handle_ref` y prohíbe `reason_code`, etc.).
+- **`cause_code` cerrado:** `natural_exit`, `deadline_duration`,
+  `deadline_validity_exhausted`, `external_termination`,
+  `supervision_failure`.
+- **Enums de `ActionRequest` con asiento aquí:** `stdin_policy.kind` ∈
+  {`empty`, `inline_b64`}; `repair_policy` ∈ {`none`};
+  `requested_guarantees` ⊆ {`runtime_supervision`, `output_bounds`,
+  `audit_trail`}.
 
 `budget_exceeded` **no existe en v1**; sólo podrá añadirse para una
 magnitud cuyo mecanismo esté clasificado y probado en la plataforma

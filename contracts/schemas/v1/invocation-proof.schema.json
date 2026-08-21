@@ -2,14 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ektel.local/contracts/schemas/v1/invocation-proof.schema.json",
   "title": "EktelInvocationProof v1",
-  "description": "Prueba de posesión (PoP) v1 (spec v1.2 §6.4, dominio ektel/pop/v1). NO es un sobre: mac = HMAC-SHA256 dominio-separado sobre len32be(nonce_bytes) || nonce_bytes || payload_digest_bytes. payload_digest es el identity_digest de la capacidad (hex) decodificado a 32 bytes crudos para el MAC.",
+  "description": "Prueba de posesión (PoP) v1 (spec v1.2 §6.4, dominio ektel/pop/v1). NO es un sobre: mac = HMAC-SHA256 dominio-separado sobre len32be(nonce_bytes) || nonce_bytes || payload_digest_bytes. payload_digest es el identity_digest de la capacidad (hex) decodificado a 32 bytes crudos para el MAC. Semántica de pattern: Draft 2020-12, coincidencia NO anclada; los patrones van auto-anclados (^ y fin absoluto (?![\\s\\S])) y rechazan prefijos, sufijos y newline final por sí mismos (spec §5.7).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "nonce", "payload_digest", "mac"],
+  "required": [
+    "schema_version",
+    "nonce",
+    "payload_digest",
+    "mac"
+  ],
   "properties": {
-    "schema_version": { "const": 1 },
-    "nonce": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
-    "payload_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "mac": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    "schema_version": {
+      "const": 1
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}(?![\\s\\S])"
+    },
+    "payload_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "mac": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+    }
   }
 }

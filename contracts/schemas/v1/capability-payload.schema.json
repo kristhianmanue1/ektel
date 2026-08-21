@@ -2,53 +2,128 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ektel.local/contracts/schemas/v1/capability-payload.schema.json",
   "title": "EktelCapabilityPayload v1",
-  "description": "Payload del CapabilityEnvelope v1 (dominio HMAC ektel/capability/v1; spec v1.2 §6). Vincula los insumos de identidad de la propuesta §7.3. artifact_identity_profile tiene un único valor válido en v1 (§6.1). Tiempos en segundos Unix de reloj de pared (§7.1).",
+  "description": "Payload del CapabilityEnvelope v1 (dominio HMAC ektel/capability/v1; spec v1.2 §6). Vincula los insumos de identidad de la propuesta §7.3. artifact_identity_profile tiene un único valor válido en v1 (§6.1). Tiempos en segundos Unix de reloj de pared (§7.1). Regla adicional de parser (spec §6, corrección M0): se exige exp > nbf (ventana vacía = invalid_value). Semántica de pattern: JSON Schema Draft 2020-12 (ECMA-262, coincidencia NO anclada); los patrones de estos schemas están auto-anclados (^ al inicio, (?![\\s\\S]) como fin absoluto) y por sí mismos rechazan prefijos, sufijos y newline final, sin reinterpretar el estándar (spec §5.7).",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "issuer_id", "key_id", "nonce", "nbf", "exp",
-    "artifact_identity_profile", "action_binding"
+    "schema_version",
+    "issuer_id",
+    "key_id",
+    "nonce",
+    "nbf",
+    "exp",
+    "artifact_identity_profile",
+    "action_binding"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
-    "issuer_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "key_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
-    "nonce": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
-    "nbf": { "type": "integer", "minimum": 0 },
-    "exp": { "type": "integer", "minimum": 0 },
-    "artifact_identity_profile": { "const": "route_mutable_unverified" },
+    "schema_version": {
+      "const": 1
+    },
+    "issuer_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "key_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}(?![\\s\\S])"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}(?![\\s\\S])"
+    },
+    "nbf": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "exp": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "artifact_identity_profile": {
+      "const": "route_mutable_unverified"
+    },
     "action_binding": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "action_id", "command_absolute", "args", "cwd",
-        "env_allowlist_values", "stdin_policy_digest", "deadline_ms",
-        "output_limits", "requested_guarantees"
+        "action_id",
+        "command_absolute",
+        "args",
+        "cwd",
+        "env_allowlist_values",
+        "stdin_policy_digest",
+        "deadline_ms",
+        "output_limits",
+        "requested_guarantees"
       ],
       "properties": {
-        "action_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "command_absolute": { "type": "string", "pattern": "^/" },
-        "args": { "type": "array", "items": { "type": "string" }, "maxItems": 256 },
-        "cwd": { "type": "string", "pattern": "^/" },
+        "action_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "command_absolute": {
+          "type": "string",
+          "pattern": "^/[^\\r\\n\\u2028\\u2029]*(?![\\s\\S])"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256
+        },
+        "cwd": {
+          "type": "string",
+          "pattern": "^/[^\\r\\n\\u2028\\u2029]*(?![\\s\\S])"
+        },
         "env_allowlist_values": {
           "type": "object",
-          "additionalProperties": { "type": "string" },
+          "additionalProperties": {
+            "type": "string"
+          },
           "maxProperties": 64
         },
-        "stdin_policy_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "deadline_ms": { "type": "integer", "minimum": 1, "maximum": 3600000 },
+        "stdin_policy_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+        },
+        "deadline_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600000
+        },
         "output_limits": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["max_stdout_bytes", "max_stderr_bytes"],
+          "required": [
+            "max_stdout_bytes",
+            "max_stderr_bytes"
+          ],
           "properties": {
-            "max_stdout_bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
-            "max_stderr_bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 }
+            "max_stdout_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 67108864
+            },
+            "max_stderr_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 67108864
+            }
           }
         },
         "requested_guarantees": {
           "type": "array",
-          "items": { "type": "string", "enum": ["runtime_supervision", "output_bounds", "audit_trail"] },
+          "items": {
+            "type": "string",
+            "enum": [
+              "runtime_supervision",
+              "output_bounds",
+              "audit_trail"
+            ]
+          },
           "maxItems": 16
         }
       }

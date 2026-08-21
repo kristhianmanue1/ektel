@@ -2,22 +2,29 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ektel.local/contracts/schemas/v1/envelope.schema.json",
   "title": "EktelSignedEnvelope v1",
-  "description": "Sobre firmado de estructura fija (spec v1.2 §5.2). La firma y el identity_digest se computan sobre los bytes ASCII de protected_header_b64 + \".\" + payload_b64 tal como viajan. base64url SIN padding; verificar MAC antes de decodificar; nunca re-serializar para verificar.",
+  "description": "Sobre firmado de estructura fija (spec v1.2 §5.2). La firma y el identity_digest se computan sobre los bytes ASCII de protected_header_b64 + \".\" + payload_b64 tal como viajan. base64url SIN padding; verificar MAC antes de decodificar; nunca re-serializar para verificar. ADR-010: las tres cadenas deben ser base64url CANÓNICO (bits residuales en cero; el receptor lo comprueba re-codificando). format=ektel-b64u-canonical es un formato PRIVADO: en JSON Schema, format es anotación salvo que el consumidor lo aserte explícitamente — un validador genérico NO comprueba la canonicalidad si no registra ese formato (spec §5.7); los parsers de referencia ektel sí lo asertan (bad_base64). Semántica de pattern: Draft 2020-12, coincidencia NO anclada; los patrones van auto-anclados (^ y fin absoluto (?![\\s\\S])) y rechazan prefijos, sufijos y newline final por sí mismos.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["protected_header_b64", "payload_b64", "signature"],
+  "required": [
+    "protected_header_b64",
+    "payload_b64",
+    "signature"
+  ],
   "properties": {
     "protected_header_b64": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$"
+      "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])",
+      "format": "ektel-b64u-canonical"
     },
     "payload_b64": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$"
+      "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])",
+      "format": "ektel-b64u-canonical"
     },
     "signature": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9_-]{43}$"
+      "pattern": "^[A-Za-z0-9_-]{43}(?![\\s\\S])",
+      "format": "ektel-b64u-canonical"
     }
   }
 }

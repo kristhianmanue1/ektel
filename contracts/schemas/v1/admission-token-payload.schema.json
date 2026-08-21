@@ -2,15 +2,37 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ektel.local/contracts/schemas/v1/admission-token-payload.schema.json",
   "title": "EktelAdmissionTokenPayload v1",
-  "description": "Payload del token de admisión (dominio HMAC ektel/admission/v1; spec v1.2 §6.6). Valor opaco de un solo uso: identity_digest + MAC interno de admisión + expiry. Lo emite admit; start re-verifica integridad, vigencia y consumo único.",
+  "description": "Payload del token de admisión (dominio HMAC ektel/admission/v1; spec v1.2 §6.6). Valor opaco de un solo uso: identity_digest + MAC interno de admisión + expiry. Lo emite admit; start re-verifica integridad, vigencia y consumo único. Semántica de pattern: Draft 2020-12, coincidencia NO anclada; los patrones van auto-anclados (^ y fin absoluto (?![\\s\\S])) y rechazan prefijos, sufijos y newline final por sí mismos (spec §5.7).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "identity_digest", "action_id", "exp", "issuer_id"],
+  "required": [
+    "schema_version",
+    "identity_digest",
+    "action_id",
+    "exp",
+    "issuer_id"
+  ],
   "properties": {
-    "schema_version": { "const": 1 },
-    "identity_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "action_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "exp": { "type": "integer", "minimum": 0 },
-    "issuer_id": { "type": "string", "minLength": 1, "maxLength": 128 }
+    "schema_version": {
+      "const": 1
+    },
+    "identity_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "action_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "exp": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issuer_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
   }
 }

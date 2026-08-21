@@ -28,6 +28,9 @@ GROUP_TO_WIRE_TYPES = {
     "invocation-proof": ["invocation-proof"],
     "action-request": ["action-request"],
     "outcomes": ["admission-outcome", "start-outcome", "termination-outcome", "execution-result"],
+    "correccion-m0": ["capability-envelope", "invocation-proof", "action-request",
+                      "admission-outcome", "start-outcome", "termination-outcome",
+                      "execution-result"],
 }
 
 

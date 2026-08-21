@@ -2,13 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ektel.local/contracts/schemas/v1/termination-token-payload.schema.json",
   "title": "EktelTerminationTokenPayload v1",
-  "description": "Payload del token opaco de terminación que porta el ExecutionHandle (dominio HMAC ektel/termination/v1; spec v1.2 §6.8, B2). El derecho de terminación nace de la admisión para ese action_id; no caduca con la ejecución.",
+  "description": "Payload del token opaco de terminación que porta el ExecutionHandle (dominio HMAC ektel/termination/v1; spec v1.2 §6.8, B2). El derecho de terminación nace de la admisión para ese action_id; no caduca con la ejecución. Semántica de pattern: Draft 2020-12, coincidencia NO anclada; los patrones van auto-anclados (^ y fin absoluto (?![\\s\\S])) y rechazan prefijos, sufijos y newline final por sí mismos (spec §5.7).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "action_id", "identity_digest"],
+  "required": [
+    "schema_version",
+    "action_id",
+    "identity_digest"
+  ],
   "properties": {
-    "schema_version": { "const": 1 },
-    "action_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "identity_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    "schema_version": {
+      "const": 1
+    },
+    "action_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "identity_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+    }
   }
 }

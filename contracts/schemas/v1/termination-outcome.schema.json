@@ -2,15 +2,31 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ektel.local/contracts/schemas/v1/termination-outcome.schema.json",
   "title": "EktelTerminationOutcome v1",
-  "description": "Resultado de terminate (spec v1.2 §8.3, B2). Una terminación sin handle válido produce TerminationRejected con capability_rejected, no un estado de ejecución.",
+  "description": "Resultado de terminate (spec v1.2 §8.3, B2). Unión DISCRIMINADA por outcome. Una terminación sin handle válido produce TerminationRejected con capability_rejected, no un estado de ejecución. Campos desconocidos cerrados por el schema mismo: unevaluatedProperties=false (Draft 2020-12). Semántica de pattern: Draft 2020-12, coincidencia NO anclada; patrones auto-anclados (^ y fin absoluto (?![\\s\\S])), rechazan prefijos, sufijos y newline final por sí mismos (spec §5.7).",
   "type": "object",
-  "additionalProperties": false,
+  "unevaluatedProperties": false,
   "required": ["schema_version", "outcome"],
   "properties": {
     "schema_version": { "const": 1 },
-    "outcome": { "enum": ["termination_accepted", "termination_rejected"] },
-    "receipt": { "type": "string" },
-    "reason_code": { "enum": ["capability_rejected"] },
-    "safe_detail": { "type": "string", "maxLength": 512 }
-  }
+    "outcome": { "enum": ["termination_accepted", "termination_rejected"] }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "outcome": { "const": "termination_accepted" },
+        "receipt": { "type": "string", "minLength": 1 }
+      },
+      "required": ["receipt"],
+      "not": { "anyOf": [ { "required": ["reason_code"] }, { "required": ["safe_detail"] } ] }
+    },
+    {
+      "properties": {
+        "outcome": { "const": "termination_rejected" },
+        "reason_code": { "enum": ["capability_rejected"] },
+        "safe_detail": { "type": "string", "maxLength": 512 }
+      },
+      "required": ["reason_code"],
+      "not": { "anyOf": [ { "required": ["receipt"] } ] }
+    }
+  ]
 }

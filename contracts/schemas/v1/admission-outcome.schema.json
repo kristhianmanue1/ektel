@@ -2,43 +2,64 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ektel.local/contracts/schemas/v1/admission-outcome.schema.json",
   "title": "EktelAdmissionOutcome v1",
-  "description": "Resultado de admit (spec v1.2 §8.2, §8.3; C1). Discriminador cerrado: outcome. Códigos de rechazo cerrados y versionados; safe_detail nunca filtra secretos.",
+  "description": "Resultado de admit (spec v1.2 §8.2, §8.3; C1). Unión DISCRIMINADA por outcome: los campos de una alternativa son obligatorios en ella y prohibidos en la otra. Vocabulario de rechazo colapsado a capability_rejected (corrección M0 2026-08-20; capability_invalid/expired/reused retirados). Campos desconocidos cerrados por el schema mismo: unevaluatedProperties=false (Draft 2020-12) — una propiedad sólo es válida si la evalúa la raíz o la alternativa discriminada elegida. Semántica de pattern: Draft 2020-12, coincidencia NO anclada; los patrones van auto-anclados (^ y fin absoluto (?![\\s\\S])) y rechazan prefijos, sufijos y newline final por sí mismos (spec §5.7).",
   "type": "object",
-  "additionalProperties": false,
+  "unevaluatedProperties": false,
   "required": ["schema_version", "outcome"],
   "properties": {
     "schema_version": { "const": 1 },
-    "outcome": { "enum": ["admitted", "admission_rejected"] },
-    "admitted_action": { "type": "string", "minLength": 1 },
-    "identity_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "policy_receipt": { "type": "string" },
-    "guarantee_plan": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["magnitude", "class", "platform", "mechanism", "assumptions", "known_escapes", "failure_mode", "evidence_ref"],
-        "properties": {
-          "magnitude": { "type": "string" },
-          "class": { "enum": ["enforced", "reactive", "observed", "unsupported"] },
-          "platform": { "type": "string" },
-          "mechanism": { "type": "string" },
-          "assumptions": { "type": "array", "items": { "type": "string" } },
-          "known_escapes": { "type": "array", "items": { "type": "string" } },
-          "failure_mode": { "type": "string" },
-          "evidence_ref": { "type": "string" }
+    "outcome": { "enum": ["admitted", "admission_rejected"] }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "outcome": { "const": "admitted" },
+        "admitted_action": { "type": "string", "minLength": 1 },
+        "identity_digest": { "type": "string", "pattern": "^[0-9a-f]{64}(?![\\s\\S])" },
+        "policy_receipt": { "type": "string" },
+        "guarantee_plan": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["magnitude", "class", "platform", "mechanism", "assumptions", "known_escapes", "failure_mode", "evidence_ref"],
+            "properties": {
+              "magnitude": { "type": "string", "minLength": 1 },
+              "class": { "enum": ["enforced", "reactive", "observed", "unsupported"] },
+              "platform": { "type": "string", "minLength": 1 },
+              "mechanism": { "type": "string", "minLength": 1 },
+              "assumptions": { "type": "array", "items": { "type": "string" }, "maxItems": 64 },
+              "known_escapes": { "type": "array", "items": { "type": "string" }, "maxItems": 64 },
+              "failure_mode": { "type": "string", "minLength": 1 },
+              "evidence_ref": { "type": "string" }
+            }
+          }
         }
-      }
+      },
+      "required": ["admitted_action", "identity_digest", "guarantee_plan"],
+      "not": { "anyOf": [
+        { "required": ["reason_code"] }, { "required": ["safe_detail"] },
+        { "required": ["retryable"] }, { "required": ["evidence_receipt"] }
+      ] }
     },
-    "reason_code": {
-      "enum": [
-        "malformed_descriptor", "capability_invalid", "capability_expired",
-        "capability_reused", "capability_rejected", "policy_denied",
-        "policy_unavailable", "audit_unavailable", "guarantee_unsupported"
-      ]
-    },
-    "safe_detail": { "type": "string", "maxLength": 512 },
-    "retryable": { "type": "boolean" },
-    "evidence_receipt": { "type": "string" }
-  }
+    {
+      "properties": {
+        "outcome": { "const": "admission_rejected" },
+        "reason_code": {
+          "enum": [
+            "malformed_descriptor", "capability_rejected", "policy_denied",
+            "policy_unavailable", "audit_unavailable", "guarantee_unsupported"
+          ]
+        },
+        "safe_detail": { "type": "string", "maxLength": 512 },
+        "retryable": { "type": "boolean" },
+        "evidence_receipt": { "type": "string" }
+      },
+      "required": ["reason_code", "safe_detail", "retryable"],
+      "not": { "anyOf": [
+        { "required": ["admitted_action"] }, { "required": ["identity_digest"] },
+        { "required": ["policy_receipt"] }, { "required": ["guarantee_plan"] }
+      ] }
+    }
+  ]
 }

@@ -134,3 +134,26 @@ verificarlos contra el código y la spec.
   Alternativa elegida: **(a) rechazar base64url no canónico** (bits residuales
   en cero, verificado re-codificando), con reproducción independiente de
   H1/H2 por Pinax antes de la firma.
+
+## 6. Precisión de alcance (FIX-AND-RETRY 2026-08-20, acta corrección M0 §7)
+
+Esta decisión **cierra los aliases base64url no canónicos de los mismos
+bytes decodificados** (H1/H2): por cada contenido binario existe a lo sumo
+UNA cadena wire aceptada, y el conjunto `(MAC, digest)` colapsa a una por
+contenido.
+
+**No afirma** —ni busca— identidad estable entre serializaciones JSON
+*semánticamente equivalentes*: dos payloads con las mismas claves en otro
+orden, o con espacios distintos, son **bytes distintos**, producen
+sobres distintos y `identity_digest` distintos (§5.2/§6.5: se firma y
+digiere lo que viaja; dos serializaciones distintas son identidades
+distintas). La canonicalidad de ADR-010 opera sobre la codificación
+base64url de cada cadena ya emitida, nunca como esquema de
+canonicalización JSON (ese esquema está prohibido en v1, §5.3). v1
+identifica el **wire autenticado**, no una forma normalizada abstracta
+del documento.
+
+Registro de gobernanza: precisión añadida post-consenso con acta explícita
+(`docs/decisiones/enmienda-correccion-m0-2026-08-20.md`, autoridad:
+instrucción FIX-AND-RETRY de Pinax avalada por el dueño, 2026-08-20). La
+decisión del §5 no cambia.

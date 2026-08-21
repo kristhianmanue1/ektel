@@ -2,56 +2,136 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ektel.local/contracts/schemas/v1/action-request.schema.json",
   "title": "EktelActionRequest v1",
-  "description": "Documento JSON estricto (spec v1.2 §5.1, §8.1; propuesta §7.2). No es sobre firmado: la capacidad y la PoP viajan en campos. El núcleo rechaza versiones mayores desconocidas y campos desconocidos.",
+  "description": "Documento JSON estricto (spec v1.2 §5.1, §8.1; propuesta §7.2). No es sobre firmado: la capacidad y la PoP viajan en campos. El núcleo rechaza versiones mayores desconocidas y campos desconocidos. Semántica de pattern: Draft 2020-12, coincidencia NO anclada; los patrones van auto-anclados (^ y fin absoluto (?![\\s\\S])) y rechazan prefijos, sufijos y newline final por sí mismos (spec §5.7). format=ektel-b64u-canonical es un formato PRIVADO: un validador genérico NO comprueba la canonicalidad salvo que registre y aserte ese formato explícitamente; los parsers de referencia ektel sí lo asertan (bad_base64).",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "action_id", "command_absolute", "args", "cwd",
-    "env_allowlist_values", "stdin_policy", "deadline_ms",
-    "capability_envelope", "invocation_proof", "nonce",
-    "repair_policy", "output_limits", "requested_guarantees",
+    "schema_version",
+    "action_id",
+    "command_absolute",
+    "args",
+    "cwd",
+    "env_allowlist_values",
+    "stdin_policy",
+    "deadline_ms",
+    "capability_envelope",
+    "invocation_proof",
+    "nonce",
+    "repair_policy",
+    "output_limits",
+    "requested_guarantees",
     "metadata_opaque"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
-    "action_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "command_absolute": { "type": "string", "pattern": "^/" },
-    "args": { "type": "array", "items": { "type": "string" }, "maxItems": 256 },
-    "cwd": { "type": "string", "pattern": "^/" },
+    "schema_version": {
+      "const": 1
+    },
+    "action_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "command_absolute": {
+      "type": "string",
+      "pattern": "^/[^\\r\\n\\u2028\\u2029]*(?![\\s\\S])"
+    },
+    "args": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256
+    },
+    "cwd": {
+      "type": "string",
+      "pattern": "^/[^\\r\\n\\u2028\\u2029]*(?![\\s\\S])"
+    },
     "env_allowlist_values": {
       "type": "object",
-      "additionalProperties": { "type": "string" },
+      "additionalProperties": {
+        "type": "string"
+      },
       "maxProperties": 64
     },
     "stdin_policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
-        "kind": { "enum": ["empty", "inline_b64"] },
-        "data_b64": { "type": "string", "pattern": "^[A-Za-z0-9_-]*$" },
-        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        "kind": {
+          "enum": [
+            "empty",
+            "inline_b64"
+          ]
+        },
+        "data_b64": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]*(?![\\s\\S])",
+          "format": "ektel-b64u-canonical"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+        }
       }
     },
-    "deadline_ms": { "type": "integer", "minimum": 1, "maximum": 3600000 },
-    "capability_envelope": { "$ref": "envelope.schema.json" },
-    "invocation_proof": { "$ref": "invocation-proof.schema.json" },
-    "nonce": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
-    "repair_policy": { "enum": ["none"] },
+    "deadline_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3600000
+    },
+    "capability_envelope": {
+      "$ref": "envelope.schema.json"
+    },
+    "invocation_proof": {
+      "$ref": "invocation-proof.schema.json"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}(?![\\s\\S])"
+    },
+    "repair_policy": {
+      "enum": [
+        "none"
+      ]
+    },
     "output_limits": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["max_stdout_bytes", "max_stderr_bytes"],
+      "required": [
+        "max_stdout_bytes",
+        "max_stderr_bytes"
+      ],
       "properties": {
-        "max_stdout_bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
-        "max_stderr_bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 }
+        "max_stdout_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "max_stderr_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        }
       }
     },
     "requested_guarantees": {
       "type": "array",
-      "items": { "type": "string", "enum": ["runtime_supervision", "output_bounds", "audit_trail"] },
+      "items": {
+        "type": "string",
+        "enum": [
+          "runtime_supervision",
+          "output_bounds",
+          "audit_trail"
+        ]
+      },
       "maxItems": 16
     },
-    "metadata_opaque": { "type": "string", "maxLength": 4096 }
+    "metadata_opaque": {
+      "type": "string",
+      "maxLength": 4096
+    }
   }
 }

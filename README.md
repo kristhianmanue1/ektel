@@ -54,12 +54,17 @@ La especificación M0–M3 v1.2 alcanzó consenso el 2026-08-20
 autorizado con alcance cerrado
 (`docs/decisiones/autorizacion-m0-2026-08-20.md`). La caracterización de
 plataforma ya se ejecutó en Darwin (5 tests + 3 skips Linux-only) y en Linux
-(8/8, `docs/evidencia/caracterizacion-linux-2026-08-20.md`). **M0 en curso** (snapshot 2026-08-20): `contracts/` ya contiene los wire
-schemas v1, 31 vectores dorados y dos parsers de referencia (uno clean-room,
-R5), con API etiquetada experimental; queda pendiente el cierre formal del
-hito. Sigue pendiente la **ampliación** de la suite de caracterización:
-durabilidad bajo fallo y RSS por muestreo. Hasta entonces no se promueven
-límites de recursos por acuerdo verbal.
+(8/8, `docs/evidencia/caracterizacion-linux-2026-08-20.md`). **M0 en curso** (snapshot 2026-08-20): `contracts/` contiene los wire
+schemas v1, 90 vectores dorados y dos parsers de referencia (uno clean-room,
+R5), corregidos tras la doble NO-GO externa (acta
+`docs/decisiones/enmienda-correccion-m0-2026-08-20.md`, ADR-010) y por tres
+rondas FIX-AND-RETRY de Pinax (semántica `pattern` Draft 2020-12, campos
+cerrados por schema, fuzz diferencial versionado bytes+semántico con oráculo,
+bases accept y fingerprint congelado, validación externa estratificada); el
+hito NO
+se cierra hasta la re-verificación externa. Sigue pendiente la **ampliación**
+de la suite de caracterización: durabilidad bajo fallo y RSS por muestreo.
+Hasta entonces no se promueven límites de recursos por acuerdo verbal.
 
 La [especificación M0–M3](docs/especificacion/ektel-runtime-m0-m3-v1.md)
 gobierna ese primer ciclo; M1 y posteriores no están autorizados.

@@ -2,17 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ektel.local/contracts/schemas/v1/start-outcome.schema.json",
   "title": "EktelStartOutcome v1",
-  "description": "Resultado de start (spec v1.2 §8.3, C1/C4). El handle es local, opaco y no serializable: en el wire type sólo aparece su referencia opaca (handle_ref) para correlación de eventos, nunca el token de terminación.",
+  "description": "Resultado de start (spec v1.2 §8.3 enmendado, C1/C4). Unión DISCRIMINADA por outcome. capability_rejected es código legítimo de StartFailed: lo exige §7.4 (perdedor de start concurrente); §8.3 enmendado lo reconoce. El handle es local/opaco/no serializable: en el wire sólo aparece handle_ref para correlación. Campos desconocidos cerrados por el schema mismo: unevaluatedProperties=false (Draft 2020-12). Semántica de pattern: Draft 2020-12, coincidencia NO anclada; patrones auto-anclados (^ y fin absoluto (?![\\s\\S])), rechazan prefijos, sufijos y newline final por sí mismos (spec §5.7).",
   "type": "object",
-  "additionalProperties": false,
+  "unevaluatedProperties": false,
   "required": ["schema_version", "outcome"],
   "properties": {
     "schema_version": { "const": 1 },
-    "outcome": { "enum": ["started", "start_failed"] },
-    "handle_ref": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
-    "reason_code": {
-      "enum": ["start_failed", "start_failed_indeterminate", "capability_rejected"]
+    "outcome": { "enum": ["started", "start_failed"] }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "outcome": { "const": "started" },
+        "handle_ref": { "type": "string", "pattern": "^[0-9a-f]{16}(?![\\s\\S])" }
+      },
+      "required": ["handle_ref"],
+      "not": { "anyOf": [ { "required": ["reason_code"] }, { "required": ["safe_detail"] } ] }
     },
-    "safe_detail": { "type": "string", "maxLength": 512 }
-  }
+    {
+      "properties": {
+        "outcome": { "const": "start_failed" },
+        "reason_code": {
+          "enum": ["start_failed", "start_failed_indeterminate", "capability_rejected"]
+        },
+        "safe_detail": { "type": "string", "maxLength": 512 }
+      },
+      "required": ["reason_code"],
+      "not": { "anyOf": [ { "required": ["handle_ref"] } ] }
+    }
+  ]
 }
