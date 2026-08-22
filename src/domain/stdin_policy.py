@@ -37,11 +37,12 @@ def _b64u_canonical(value: str) -> bool:
     return reencoded == value
 
 
-def effective_stdin(policy: dict[str, object]) -> tuple[bytes, str] | str:
+def effective_stdin(policy: object) -> tuple[bytes, str] | str:
     """Devuelve `(bytes_efectivos, digest_efectivo)` o un detalle de
     incoherencia interna (→ `malformed_descriptor`, regla 2 final paso 1)."""
     if not isinstance(policy, dict):
         return "stdin_policy:no-dict"
+    assert isinstance(policy, dict)
     kind = policy.get("kind")
     if kind == "empty":
         if "data_b64" in policy:

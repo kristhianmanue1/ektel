@@ -1,7 +1,9 @@
 # ektel
 
-**Estado:** preimplementación. Este README documenta intención corregida por
-revisión adversarial, no una implementación ni garantías ya disponibles.
+**Estado:** M0 cerrado contractualmente; M1 implementado con cierre abierto
+(ver «Estado del ciclo»). Este README documenta intención corregida por
+revisión adversarial más el estado real de implementación; no todas las
+garantías están ya disponibles.
 
 ## Qué se pretende
 
@@ -56,28 +58,38 @@ autorizado con alcance cerrado
 plataforma ya se ejecutó en Darwin (5 tests + 3 skips Linux-only) y en Linux
 aarch64 (8/8, `docs/evidencia/caracterizacion-linux-2026-08-20.md`).
 
-**Estado actual (verificado 2026-08-21):** M0 está **cerrado a nivel
-contractual y publicado**. El texto previo de esta sección era un snapshot
-histórico (2026-08-20) del paquete en corrección, aún condicionado a la
-re-verificación externa; esa condición ya se cumplió. `contracts/` contiene
-los wire schemas v1, 90 vectores dorados y dos parsers de referencia (uno
-clean-room, R5), corregidos tras la doble NO-GO externa (acta
+**Estado actual (verificado 2026-08-21; corpus actualizado 2026-08-22):**
+M0 está **cerrado a nivel contractual y publicado**. El texto previo de
+esta sección era un snapshot histórico (2026-08-20) del paquete en
+corrección, aún condicionado a la re-verificación externa; esa condición ya
+se cumplió. `contracts/` contiene los wire schemas v1, **91 vectores
+dorados** (D-P2/M1: `tout-valid-accepted`) y dos parsers de referencia
+(uno clean-room, R5), corregidos tras la doble NO-GO externa (acta
 `docs/decisiones/enmienda-correccion-m0-2026-08-20.md`, ADR-010) y por tres
 rondas FIX-AND-RETRY de Pinax (semántica `pattern` Draft 2020-12, campos
-cerrados por schema, fuzz diferencial versionado bytes+semántico con oráculo,
-bases accept y fingerprint congelado, validación externa estratificada). El
-gate externo final terminó en doble PROCEED oficial (Codex y Claude sobre el
-mismo MANIFEST-ROOT `sha256:47302f74…`); el cierre contractual quedó
-registrado en `fba5a35` y su evidencia durable publicada en
-`docs/revisiones/2026-08-21-m0-gate-final/` (commit
+cerrados por schema, fuzz diferencial versionado bytes+semántico con
+oráculo, bases accept y fingerprint congelado, validación externa
+estratificada). El gate externo final terminó en doble PROCEED oficial
+(Codex y Claude sobre el mismo MANIFEST-ROOT `sha256:47302f74…`); el cierre
+contractual quedó registrado en `fba5a35` y su evidencia durable publicada
+en `docs/revisiones/2026-08-21-m0-gate-final/` (commit
 `ecfde79818e74c358a515e43590106e20e013cfd`).
 
-Siguen pendientes —sin presentarse como M1 ni haberse iniciado—: la
-caracterización en **x86_64 real** (puerta de pre-producción, no de M1–M3;
-ADR-006/N12), la ampliación de la suite de caracterización (durabilidad
-bajo fallo y RSS por muestreo: trabajo pendiente fuera de M0, según la
-autorización) y la deuda residual de M0 `stdin_policy` (H6, acta §13).
-Hasta entonces no se promueven límites de recursos por acuerdo verbal.
+**M1 (admisión) — estado 2026-08-22:** autorizado por acta
+(`docs/decisiones/autorizacion-m1-2026-08-22.md`, con adendas del dueño) e
+**implementado** (dominio/puertos/adaptadores, 130 tests OK / 3 skips,
+`mypy --strict` limpio, fuzz de admisión con oráculo): ver
+`docs/decisiones/estado-post-m1-2026-08-22.md`. **Cierre ABIERTO por
+G15-Linux** (la suite no se ha ejecutado en la plataforma primaria Linux
+aarch64) y pendiente de la auditoría integral del Controlador. Sin push.
+
+Siguen pendientes: la caracterización en **x86_64 real** (puerta de
+pre-producción, no de M1–M3; ADR-006/N12), la ampliación de la suite de
+caracterización (durabilidad bajo fallo y RSS por muestreo: trabajo
+pendiente con autorización aparte) y el cierre de M1 (G15-Linux). La deuda
+residual de M0 `stdin_policy` (H6, acta §13) quedó resuelta en la capa de
+admisión M1 (D-P1 ampliada, adenda del dueño 2026-08-22). Hasta entonces no
+se promueven límites de recursos por acuerdo verbal.
 
 La [especificación M0–M3](docs/especificacion/ektel-runtime-m0-m3-v1.md)
-gobierna ese primer ciclo; **M1, M2 y M3 no están autorizados**.
+gobierna ese primer ciclo; **M2 y M3 no están autorizados**.

@@ -1,0 +1,37 @@
+# CI de desarrollo M1 (G12; ADR-006 A8: «obligación que M1 debe crear, no
+# hecho consumado»). mypy --strict es HERRAMIENTA DE DESARROLLO — no una
+# dependencia runtime (ADR-006: el núcleo permanece stdlib-only).
+#
+# Nota honesta (orden M1, sin push): este pipeline no corre hasta que el
+# dueño autorice push; el artefacto existe y es ejecutable localmente con
+# los mismos pasos.
+name: ci-m1
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: mypy --strict (herramienta de desarrollo)
+        run: |
+          python -m pip install --disable-pip-version-check mypy
+          python -m mypy --strict src/
+      - name: Suite completa (M0+M1)
+        run: python -m unittest discover -s tests -v
+      - name: Regeneración de vectores (diff cero)
+        run: |
+          tmp="$(mktemp -d)"
+          EKTEL_VECTORS_OUT="$tmp" python scripts/generate-golden-vectors.py
+          diff -r "$tmp" contracts/vectors/v1
+      - name: Fuzz de contrato (congelado)
+        run: python scripts/fuzz_diferencial.py
+      - name: Fuzz de admisión con oráculo (G8)
+        run: python scripts/fuzz_admision.py
