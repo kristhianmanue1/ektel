@@ -1,7 +1,12 @@
 # contracts/ — wire schemas v1, vectores dorados y parsers de referencia (M0)
 
-**Estado:** API **experimental** (spec v1.2 §16). Sin compromiso de estabilidad
-hasta cerrar M0 con la prueba de implementación independiente (R5).
+**Estado:** API **experimental** (spec v1.2 §16), sin compromiso de
+estabilidad. M0 está cerrado a nivel contractual y publicado: doble PROCEED
+externo (Codex y Claude sobre el mismo MANIFEST-ROOT `sha256:47302f74…`),
+cierre registrado en `fba5a35` y evidencia durable en
+`docs/revisiones/2026-08-21-m0-gate-final/` (commit
+`ecfde79818e74c358a515e43590106e20e013cfd`). M1, M2 y M3 no están
+autorizados.
 
 **Fuente normativa:** `docs/especificacion/ektel-runtime-m0-m3-v1.md` (v1.2,
 adoptada 2026-08-20). Autorización: `docs/decisiones/autorizacion-m0-2026-08-20.md`.
@@ -73,9 +78,10 @@ esperado en los vectores. Eso **debilita la independencia** que R5 quería
 acreditar: el acuerdo A/B actual acredita convergencia de dos
 implementaciones de estilos distintos frente al corpus versionado, no
 independencia estadística de dos autores aislados. La mirada independiente
-queda restaurada —si procede— por la re-verificación externa (gate de
-salida pendiente), no por el acuerdo A/B. Declarado así en el acta de
-corrección M0 (§4.2).
+quedó a cargo de la re-verificación externa, ya ejecutada con doble PROCEED
+(Codex y Claude; evidencia durable en
+`docs/revisiones/2026-08-21-m0-gate-final/`), no del acuerdo A/B. Declarado
+así en el acta de corrección M0 (§4.2).
 
 ## Verificación
 
