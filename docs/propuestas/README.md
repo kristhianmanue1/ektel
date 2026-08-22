@@ -22,6 +22,10 @@ proyecto.
   delimitación, criterios de salida convertidos en gates, decisiones D-P1–D-P4
   (H6 `stdin_policy`, O-1, O-3, compuerta de spawn) con recomendación razonada
   y pendientes de firma, carril de caracterización separado y stop rules.
-  **No autoriza M1 ni implementación alguna**; la ronda adversarial sobre el
-  paquete se registra en
+  **No autoriza M1 ni implementación alguna**; la decisión del dueño
+  (D-P1..D-P4 aceptadas; M1 autorizado con condiciones expresas) quedó
+  registrada en
+  [../decisiones/autorizacion-m1-2026-08-22.md](../decisiones/autorizacion-m1-2026-08-22.md)
+  (2026-08-22); ampliada por adenda autorizada del dueño el mismo día (el
+  acta la referencia). La ronda adversarial sobre el paquete se registra en
   [../revisiones/2026-08-22-pre-m1-adversarial.md](../revisiones/2026-08-22-pre-m1-adversarial.md).

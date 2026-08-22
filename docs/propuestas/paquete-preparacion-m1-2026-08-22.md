@@ -2,8 +2,15 @@
 
 **Estado:** **propuesta para decisión del dueño — NO es autorización.** Nada en
 este documento autoriza M1, implementación, commit, push, publicación ni
-cambio de contrato. La decisión y la firma quedan **pendientes**. El dueño
-decide; este paquete sólo prepara su decisión.
+cambio de contrato. **Decidida (2026-08-22):** el dueño aceptó D-P1..D-P4 y
+autorizó M1 con condiciones expresas — acta:
+`docs/decisiones/autorizacion-m1-2026-08-22.md`. El mismo día el dueño
+autorizó una **adenda** (origen: rondas Pinax R1/R2) que sustituye las
+formulaciones ambiguas de la orden, y una **adenda final** que levantó las
+pausas restantes (sal/`key_id`, precedencia) y cerró las rondas Pinax —
+texto operativo vigente en el plano (b) y la sección «Reglas finales
+autorizadas» del acta. Este paquete no afirma implementación: la
+autorización la dio el dueño por canal, no este documento.
 
 **Fecha:** 2026-08-22.
 **Autor:** Ejecutor OpenCode (GLM 5.2), sesión `ektel-opencode-ejecutor-pre-m1-01`,
@@ -21,7 +28,9 @@ es un acta de autorización (las actas viven en `docs/decisiones/` y sólo el
 dueño las firma). Confundir propuesta con autorización es exactamente el defecto
 que este paquete existe para evitar. La autorización de M1, si procede, es un
 acto separado con alcance cerrado (especificación v1.2 §19 punto 6; acta de
-autorización de M0, restricciones).
+autorización de M0, restricciones). **Ese acto ocurrió el 2026-08-22**
+(acta: `docs/decisiones/autorizacion-m1-2026-08-22.md`); la propuesta en sí
+no autorizó nada entonces ni lo autoriza ahora.
 
 ## 1. Estado real del proyecto (sin inflar)
 
@@ -34,8 +43,11 @@ autorización de M0, restricciones).
   declarada** — `contracts/README.md`, R5: el acuerdo A/B acredita
   convergencia de dos estilos, no independencia estadística; la mirada
   independiente fue la re-verificación externa).
-- **M1, M2 y M3 NO están autorizados** (especificación §19.6; autorización M0:
-  «cada hito posterior requiere su propia autorización»).
+- **M1 quedó autorizado el 2026-08-22** (acta
+  `docs/decisiones/autorizacion-m1-2026-08-22.md`, con condiciones expresas;
+  al redactar este paquete no lo estaba — especificación §19.6; autorización
+  M0: «cada hito posterior requiere su propia autorización»). **M2 y M3
+  siguen sin autorizar.**
 - **Deuda M0 abierta y declarada:** H6 `stdin_policy` (acta de corrección M0
   §13; confirmada abierta por el gate Claude, O-5). **Observaciones no
   bloqueantes del gate final:** O-1 (sin base accept para
@@ -232,7 +244,15 @@ M1 (o ADR propio antes). **Este paquete no resuelve H6; lo pone en decisión.**
 **Recomendación razonada:** (a). Resuelve la deuda donde vive la decisión
 (la admisión decide qué hace el núcleo con el stdin antes de spawn, según el
 acta), sin reabrir M0 y sin contratar el costo de (b). **Decisión: pendiente
-del dueño (D-P1). Este documento no la firma.**
+del dueño (D-P1). Este documento no la firma.** *(Decidida el 2026-08-22:
+opción (a), luego **ampliada por adenda del dueño** — stdin ligado byte a
+byte a la capacidad: `empty` = sólo `{kind:"empty"}` con digest de `b""`;
+`inline_b64` exige `data_b64` canónico y `sha256` con triple comparación;
+discordancia = `malformed_descriptor` antes de PoP/replay/inicio — ver §10 y
+acta, plano (b); la precedencia por capa quedó fijada por la adenda final:
+incoherencia interna → `malformed_descriptor`; discordancia contra el
+`action_binding` autenticado (incluido digest de stdin) →
+`capability_rejected`.)*
 
 ## 6. O-1 y O-3 (decisiones D-P2 y D-P3; NO resueltos aquí)
 
@@ -252,7 +272,8 @@ de comportamiento.
 
 **Recomendación razonada:** (i), como parte del trabajo M1 autorizado (no de
 este paquete): costo mínimo, cierra un hueco de oráculo detectado por el gate
-final. **Decisión: pendiente del dueño (D-P2).**
+final. **Decisión: pendiente del dueño (D-P2).** *(Decidida el 2026-08-22:
+opción (i) — ver §10 y acta de autorización M1.)*
 
 ### O-3 — NUL/TAB/`U+0085` en `command_absolute`/`cwd` (D-P3)
 
@@ -271,7 +292,14 @@ supuesto de que «el parser ya lo filtró».
 
 **Recomendación razonada:** (i) con alcance **mínimo `NUL`** obligatorio; la
 ampliación a TAB/`U+0085` queda a elección del dueño (se señala el trade-off;
-no se elige por él). **Decisión: pendiente del dueño (D-P3).**
+no se elige por él). **Decisión: pendiente del dueño (D-P3).** *(Decidida el
+2026-08-22: mínimo `NUL`, luego **ampliada por adenda del dueño** — NUL
+rechazado también en cada elemento de `args` y en nombres/valores de
+`env_allowlist_values`; nombre de entorno no vacío y sin `=`; TAB/`U+0085`
+admitidos como límite consciente — y precisada por la **adenda final**
+(regla 4: `os.fsencode` sobre las cadenas destinadas al futuro `execve`;
+`UnicodeEncodeError` → `malformed_descriptor`; TAB/`U+0085` permitidos
+cuando representables) — ver §10 y acta.)*
 
 ## 7. Carril de caracterización — explícitamente separado de M1
 
@@ -310,7 +338,7 @@ sin código):
 | `tests/unit/`, `tests/contract/`, `tests/integration/`, `tests/adversarial/` | Gates G1–G16 por capa: unitarios de dominio, contrato contra el corpus M0 + vectores de admisión, integración de reinicio del store y concurrencia CAS, adversariales de replay/mutación. |
 | `scripts/` | Extensión determinista del fuzz a la capa de admisión (bases aceptadas por la admisión, oráculo por mutación). |
 | CI (`.github/` o equivalente) | Creación del pipeline con `mypy --strict` como herramienta de desarrollo (G12; no existe hoy). |
-| `contracts/` | **Sólo** si D-P2 resulta aprobada: `tout-valid-accepted` en generator + corpus + re-congelado de fingerprint. Cualquier otro cambio de contrato queda fuera. |
+| `contracts/` | **Sólo** bajo D-P2, aprobada por el dueño el 2026-08-22 (acta de autorización M1): `tout-valid-accepted` en generator + corpus + re-congelado de fingerprint. Cualquier otro cambio de contrato queda fuera. |
 | `docs/` | Acta de autorización M1 (firma del dueño), actas de enmienda si las hay, registro de estado post-M1. |
 
 ## 9. Stop rules, rollback y definición de terminado de la implementación M1
@@ -331,9 +359,8 @@ sin código):
 
 ### Rollback
 
-El árbol no contiene trabajo de implementación: los únicos cambios pendientes
-de commit son los 3 archivos de este paquete; todo M1 es aditivo (código y
-tests nuevos,
+El árbol no contiene trabajo de implementación (`src/` sin código); todo M1
+es aditivo (código y tests nuevos,
 CI nueva, docs nuevas; `contracts/` sólo bajo D-P2 con regeneración
 determinista verificable por diff). El rollback es `git revert`/reset al
 commit de autorización; no existe migración de estado (el replay store es
@@ -348,18 +375,35 @@ idénticos; acta del dueño cerrando M1; tabla claims actualizada **sólo** por
 los claims cuya suite M1 ejecutó (nota de la tabla: C1–C4 y C10 con la suite
 M1; C3 y C5–C7 con M2/M3) — promoción por claim, con prueba conservada.
 
-## 10. Decisiones para el dueño (ninguna resuelta por este documento)
+## 10. Decisiones para el dueño (decididas el 2026-08-22)
 
 | # | Decisión | Opciones | Recomendación | Estado |
 |---|---|---|---|---|
-| D-P1 | H6 `stdin_policy`: dónde vive la coherencia por `kind` | (a) regla de admisión M1 · (b) enmienda de contrato §8.1 · (c) aplazar a M2 | **(a)** — resuelve la deuda en la capa que decide, sin reabrir M0 (§5) | PENDIENTE |
-| D-P2 | O-1: añadir `tout-valid-accepted` al corpus como trabajo M1 | (i) añadir · (ii) dejar el hueco documentado | **(i)** — cierra hueco de oráculo con costo mínimo (§6) | PENDIENTE |
-| D-P3 | O-3: bytes de control en `command_absolute`/`cwd` | (i) rechazo en admisión (mínimo `NUL`; opcional TAB/`U+0085`) · (ii) diferir a M2 · (iii) enmienda de schema | **(i) mínimo `NUL`**; ampliación a elección del dueño (§6) | PENDIENTE |
-| D-P4 | Forma de la compuerta de spawn en M1 (para G2) | (α) stub instrumental contabilizado, sin procesos reales · (β) proceso real mínimo sin supervisión — **roza M2**: el inicio del grupo observado es entregable M2 (spec §15); elegirlo exige ampliar alcance explícitamente | **(α)** — prueba «ningún inválido inicia» por construcción + contador, sin adelantar M2 (§2.1, punto 8) | PENDIENTE |
+| D-P1 | H6 `stdin_policy`: dónde vive la coherencia por `kind` | (a) regla de admisión M1 · (b) enmienda de contrato §8.1 · (c) aplazar a M2 | **(a)** — resuelve la deuda en la capa que decide, sin reabrir M0 (§5) | **ACEPTADA (a), ampliada por adenda del dueño (2026-08-22)** — stdin ligado byte a byte a la capacidad (regla 1 de la adenda; acta, plano (b)); precedencia por capa fijada por la adenda final (regla 2) |
+| D-P2 | O-1: añadir `tout-valid-accepted` al corpus como trabajo M1 | (i) añadir · (ii) dejar el hueco documentado | **(i)** — cierra hueco de oráculo con costo mínimo (§6) | **ACEPTADA (i)** — ampliada por adenda (regla 4: manifest/conteos nuevos; dossier M0 histórico inmutable); confirmada por Pinax R2 — acta |
+| D-P3 | O-3: bytes de control en `command_absolute`/`cwd` | (i) rechazo en admisión (mínimo `NUL`; opcional TAB/`U+0085`) · (ii) diferir a M2 · (iii) enmienda de schema | **(i) mínimo `NUL`**; ampliación a elección del dueño (§6) | **ACEPTADA, ampliada por adenda del dueño (2026-08-22)** — NUL rechazado en `command_absolute`, `cwd`, `args` y entorno, nombre de entorno no vacío y sin `=` (regla 2 de la adenda; acta, plano (b)); TAB/`U+0085` admitidos como límite consciente; representabilidad `os.fsencode` autorizada por la adenda final (regla 4) |
+| D-P4 | Forma de la compuerta de spawn en M1 (para G2) | (α) stub instrumental contabilizado, sin procesos reales · (β) proceso real mínimo sin supervisión — **roza M2**: el inicio del grupo observado es entregable M2 (spec §15); elegirlo exige ampliar alcance explícitamente | **(α)** — prueba «ningún inválido inicia» por construcción + contador, sin adelantar M2 (§2.1, punto 8) | **ACEPTADA (α)** — precisada por adenda (regla 5: spy/test double sólo de pruebas; cero `subprocess`/`fork`/`exec`/API `start`/ProcessHost/supervisión en producción M1); confirmada por Pinax R2 — acta |
 
-Cada decisión es pequeña y concreta; ninguna se firma por el dueño aquí. La
-autorización de M1, si procede, es acto separado con alcance cerrado y puede
-incorporar las decisiones como condiciones expresas.
+Condición adicional de la misma orden (no era decisión del paquete): la
+clave de operador ausente, ilegible o inválida debe fallar cerrado con gate
+propio usando vocabulario normativo existente (si exigiera código nuevo o
+contradijera la spec: volver al dueño) — transcripción y referencia en el
+acta. **Estado vigente:** la adenda R1 fija el perfil completo de la clave
+(regla 3: archivo regular, sin symlink, dueño efectivo, modo `0600` exacto,
+32 bytes crudos, carga única fail-closed al inicializar — nunca
+`AdmissionRejected` ni `reason_code` nuevo) y la **adenda final** fija el
+perfil operativo de `key_id`/`deployment_salt` (regla 1: sal de
+configuración de exactamente 32 bytes;
+`key_id = sha256(deployment_salt || operator_key).hexdigest()[:16]`, hex
+minúscula; cambiar clave o sal exige reinicio y reemisión) y la carga segura
+(regla 3 final: `O_NOFOLLOW` + `fstat` del descriptor abierto, 32 bytes
+exactos + EOF, fallo impide inicializar; límite de zeroization en Python
+declarado) — ver acta, «Reglas finales autorizadas».
+
+Cada decisión es pequeña y concreta; ninguna se firmó dentro de este
+documento — el dueño las decidió por canal el 2026-08-22 y quedaron
+registradas en el acta. La autorización de M1 es acto separado con alcance
+cerrado e incorpora estas decisiones como condiciones expresas.
 
 ## 11. Contexto sin autoridad
 
@@ -384,7 +428,10 @@ garantías (declaración de la propuesta de intercambio, §0).
 
 ## 12. Lo que este paquete NO hace
 
-- No autoriza M1 ni implementación alguna; no crea acta de decisión.
+- No autoriza M1 ni implementación alguna por sí mismo: la decisión fue del
+  dueño por canal (2026-08-22) y quedó registrada en acta separada
+  (`docs/decisiones/autorizacion-m1-2026-08-22.md`); este paquete no crea
+  acta ni afirma implementación.
 - No modifica especificación, ADRs, schemas, vectores, parsers ni código.
 - No comitea ni empuja; no escribe memoria AN-KLA.
 - No promueve claims (todos siguen P) ni presenta H6/O-1/O-3 como resueltos.
