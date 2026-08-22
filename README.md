@@ -1,6 +1,6 @@
 # ektel
 
-**Estado:** M0 cerrado contractualmente; M1 implementado con cierre abierto
+**Estado:** M0 cerrado contractualmente y publicado; M1 implementado y cerrado
 (ver «Estado del ciclo»). Este README documenta intención corregida por
 revisión adversarial más el estado real de implementación; no todas las
 garantías están ya disponibles.
@@ -84,7 +84,9 @@ en contenedor (clase V, imagen fijada por digest:
 `docs/evidencia/g15-linux-aarch64-m1-2026-08-22.md`) — actas:
 `docs/decisiones/estado-post-m1-2026-08-22.md` y
 `docs/decisiones/cierre-m1-2026-08-22.md`. **M2 y M3 siguen sin
-autorizar. Sin push.**
+autorizar.** La preparación de una versión alfa o de cualquier release queda
+diferida hasta que M3 esté cerrado, por decisión expresa del dueño del
+2026-08-22; el cierre de M1 no abre por sí mismo un ciclo de publicación.
 
 Siguen pendientes: la caracterización en **x86_64 real** (puerta de
 pre-producción, no de M1–M3; ADR-006/N12), la ampliación de la suite de
