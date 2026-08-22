@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from types import MappingProxyType
 from typing import Callable, Mapping, Optional
 
 from ..adapters.operator_key import OperatorKeyError, load_operator_key
@@ -216,14 +217,16 @@ class AdmissionService:
             if self._policy_mode == "required":
                 return None, False, "unavailable"
             return None, True, None  # optional sin puerto: fail-open declarado
-        # El núcleo evalúa SU copia inmutable (ADR-008 A2).
-        request: dict[str, object] = {
+        # El núcleo evalúa SU copia inmutable (ADR-008 A2): vista de sólo
+        # lectura — la mutación por el adaptador se bloquea por tipo, no
+        # por convención (contract tests con FakePolicyPort, INC-4).
+        request: Mapping[str, object] = MappingProxyType({
             "schema_version": 1,
             "action_id": doc.get("action_id"),
             "identity_digest": identity_digest,
             "command_absolute": doc.get("command_absolute"),
             "policy_mode": self._policy_mode,
-        }
+        })
         started = self._mono_clock()
         decision = self._policy_port.evaluate(request)
         tardy = (self._mono_clock() - started) > self._policy_timeout_s
