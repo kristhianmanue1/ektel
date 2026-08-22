@@ -1,5 +1,7 @@
-"""ektel application — placeholder de estructura (spec v1.2 §18).
+"""ektel application — orquestación de admisión M1 (propuesta §6.2).
 
-API EXPERIMENTAL (spec §16): sin compromiso de estabilidad hasta cerrar M0
-con la prueba de implementación independiente (R5).
+API EXPERIMENTAL (spec §16).
 """
+from .admit import AdmissionService, POLICY_MODES
+
+__all__ = ["AdmissionService", "POLICY_MODES"]
