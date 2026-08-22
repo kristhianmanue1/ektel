@@ -17,3 +17,11 @@ proyecto.
   pendiente de cualquier adopción posterior, incluida la recíproca de
   escrubery. Fuente: repositorio privado y versionado, citado por permalink
   como referencia versionada.
+- [Paquete de preparación para la decisión sobre M1](paquete-preparacion-m1-2026-08-22.md)
+  — propuesta **no vinculante** para que el dueño decida sobre M1 (admisión):
+  delimitación, criterios de salida convertidos en gates, decisiones D-P1–D-P4
+  (H6 `stdin_policy`, O-1, O-3, compuerta de spawn) con recomendación razonada
+  y pendientes de firma, carril de caracterización separado y stop rules.
+  **No autoriza M1 ni implementación alguna**; la ronda adversarial sobre el
+  paquete se registra en
+  [../revisiones/2026-08-22-pre-m1-adversarial.md](../revisiones/2026-08-22-pre-m1-adversarial.md).
