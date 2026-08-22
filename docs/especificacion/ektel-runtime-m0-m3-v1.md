@@ -695,8 +695,9 @@ Criterio de adopción (propuesta §21) a la fecha de esta v1.2:
    (2026-08-20, `docs/decisiones/autorizacion-m0-2026-08-20.md`, tras la
    revisión cruzada final y el consenso explícito de esta v1.2) y **para
    M1** (2026-08-22, `docs/decisiones/autorizacion-m1-2026-08-22.md` con
-   adendas; implementado con cierre abierto por G15-Linux — ver
-   `docs/decisiones/enmienda-estado-19-6-m1-2026-08-22.md`); **M2 y M3
-   siguen sin autorizar** y cada uno requiere su propio acto. Enmienda de
-   estado con acta: `enmienda-adopcion-19-6-y-cita-tabla-2026-08-20.md`
-   (M0) y `enmienda-estado-19-6-m1-2026-08-22.md` (M1).
+   adendas; implementado y cerrado con evidencia en dos plataformas —
+   ver `docs/decisiones/enmienda-estado-19-6-m1-2026-08-22.md` y
+   `docs/decisiones/cierre-m1-2026-08-22.md`); **M2 y M3 siguen sin
+   autorizar** y cada uno requiere su propio acto. Enmienda de estado con
+   acta: `enmienda-adopcion-19-6-y-cita-tabla-2026-08-20.md` (M0) y
+   `enmienda-estado-19-6-m1-2026-08-22.md` (M1).

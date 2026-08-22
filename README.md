@@ -75,18 +75,21 @@ contractual quedó registrado en `fba5a35` y su evidencia durable publicada
 en `docs/revisiones/2026-08-21-m0-gate-final/` (commit
 `ecfde79818e74c358a515e43590106e20e013cfd`).
 
-**M1 (admisión) — estado 2026-08-22:** autorizado por acta
-(`docs/decisiones/autorizacion-m1-2026-08-22.md`, con adendas del dueño) e
-**implementado** (dominio/puertos/adaptadores, 130 tests OK / 3 skips,
-`mypy --strict` limpio, fuzz de admisión con oráculo): ver
-`docs/decisiones/estado-post-m1-2026-08-22.md`. **Cierre ABIERTO por
-G15-Linux** (la suite no se ha ejecutado en la plataforma primaria Linux
-aarch64) y pendiente de la auditoría integral del Controlador. Sin push.
+**M1 (admisión) — estado 2026-08-22: CERRADO.** Autorizado por acta
+(`docs/decisiones/autorizacion-m1-2026-08-22.md`, con adendas del dueño),
+implementado (dominio/puertos/adaptadores, 130 tests OK — 0 skips en Linux
+—, `mypy --strict` limpio, fuzz de admisión con oráculo) y cerrado con
+evidencia en **dos plataformas** — Darwin arm64 (clase L) y Linux aarch64
+en contenedor (clase V, imagen fijada por digest:
+`docs/evidencia/g15-linux-aarch64-m1-2026-08-22.md`) — actas:
+`docs/decisiones/estado-post-m1-2026-08-22.md` y
+`docs/decisiones/cierre-m1-2026-08-22.md`. **M2 y M3 siguen sin
+autorizar. Sin push.**
 
 Siguen pendientes: la caracterización en **x86_64 real** (puerta de
 pre-producción, no de M1–M3; ADR-006/N12), la ampliación de la suite de
 caracterización (durabilidad bajo fallo y RSS por muestreo: trabajo
-pendiente con autorización aparte) y el cierre de M1 (G15-Linux). La deuda
+pendiente con autorización aparte). La deuda
 residual de M0 `stdin_policy` (H6, acta §13) quedó resuelta en la capa de
 admisión M1 (D-P1 ampliada, adenda del dueño 2026-08-22). Hasta entonces no
 se promueven límites de recursos por acuerdo verbal.

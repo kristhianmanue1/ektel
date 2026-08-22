@@ -4,10 +4,16 @@
 (`autorizacion-m1-2026-08-22.md` + adendas R1 y final); el encargo INC-5
 autoriza «documentación de implementación, rondas y cierre M1».
 
-**Estado honesto: M1 implementado; cierre ABIERTO por G15-Linux.** Sin
-push. La auditoría adversarial integral del Controlador sobre el rango M1
-(es method de la orden) queda pendiente al momento de este acta; el commit
-de cierre es decisión suya.
+**Estado honesto al cierre del ciclo: M1 implementado y CERRADO** (acta
+`cierre-m1-2026-08-22.md`; bloqueo G15-Linux resuelto — ver actualización).
+Sin push. La auditoría adversarial integral del Controlador sobre el rango
+M1 precede al commit de cierre (método de la orden).
+
+> **ACTUALIZACIÓN (2026-08-22, orden G15-Docker):** el bloqueo G15-Linux
+> quedó **RESUELTO** con la evidencia
+> `docs/evidencia/g15-linux-aarch64-m1-2026-08-22.md`; el cierre fue
+> registrado en `docs/decisiones/cierre-m1-2026-08-22.md`. El texto
+> original del bloqueo se conserva abajo como historia.
 
 ## Gates G1–G16 (evidencia por gate)
 
@@ -27,10 +33,10 @@ de cierre es decisión suya.
 | G12 CI mypy | `.github/workflows/ci-m1.yml` (mypy --strict + suite + regen + ambos fuzz) y `mypy.ini`; `python3 -m mypy --strict src/` → **limpio, 22 archivos**. Nota honesta: sin push el pipeline no corre; existe y es ejecutable local (ADR-006 A8) | VERDE (artefacto) |
 | G13 latencia | `scripts/medir_latencia_admision.py` (n=200, reloj monotónico, store durable real con fsync por admisión, Darwin arm64/APFS, clase L): **min 3.48 ms · p50 6.70 ms · p95 8.05 ms · max 14.65 ms** — la escritura durable síncrona es visible por diseño (ADR-004). Evidencia: dossier efímero `g13-latencia.json` | MEDIDA (L) |
 | G14 skew versionado | `Admitted.skew_tolerance_s` (vehículo M1 en el resultado; el evento es M3); valor por defecto **30 s** (§7.3, ADR-004 A3), parámetro de despliegue | VERDE |
-| G15 plataforma | **Darwin arm64 (macOS 26.5.2 build 25F84, Python 3.12.12): suite completa ejecutada, clase L.** **Linux aarch64: NO ejecutado** — ver bloqueo | PARCIAL → **BLOQ de cierre** |
+| G15 plataforma | **Darwin arm64 (macOS 26.5.2 build 25F84, Python 3.12.12): suite completa ejecutada, clase L.** **Linux aarch64 (2026-08-22, orden G15-Docker): RESUELTO** — contenedor Debian 12/Python 3.12.14, imagen por digest, 130 OK/0 skips con Linux-only ejercitadas (`docs/evidencia/g15-linux-aarch64-m1-2026-08-22.md`), clase V | **VERDE (L+V)** |
 | G16 reinicio del store | `test_replay_store_file::test_g16_*` (4 pruebas): instancia NUEVA contra el mismo directorio durable (archivo real); replays de nonces y tokens gastados siguen rechazados; nonce nuevo = admisión nueva (digest distinto); estado en disco inspeccionado | VERDE |
 
-## BLOQ de cierre — G15-Linux (exacto)
+## ~~BLOQ de cierre — G15-Linux~~ (RESUELTO 2026-08-22; historia)
 
 La plataforma primaria de M1–M3 es **Linux aarch64** (ADR-006, §14 de la
 spec). La suite completa M0+M1 **no se ha ejecutado en Linux aarch64**:

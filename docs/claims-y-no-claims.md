@@ -52,27 +52,29 @@ no como claim de producto. El identificador C9 queda retirado, no
 reutilizado.)*
 
 *(Estado de evidencia — taxonomía §2.1 de la consolidación: la suite M1
-(2026-08-22, **clase L — Darwin arm64, macOS 26.5.2, Python 3.12.12**;
-Linux aarch64 pendiente, ver
-`docs/decisiones/estado-post-m1-2026-08-22.md`) promovió a **V-L** los
-claims **C1, C2 y C10**, por claim y con prueba conservada: **C1**
-(fail-closed de admisión; falsificado por
+(2026-08-22) promovió a **V-L+V** los claims **C1, C2 y C10** — Darwin arm64
+clase L (macOS 26.5.2, Python 3.12.12) y Linux aarch64 clase V (contenedor
+Docker Debian 12, Python 3.12.14, imagen fijada por digest;
+`docs/evidencia/g15-linux-aarch64-m1-2026-08-22.md`; las pruebas Linux-only
+de caracterización ejercitadas 8/8) — por claim y con prueba conservada:
+**C1** (fail-closed de admisión; falsificado por
 `tests/adversarial/test_policy_spawn_frontier.py` — zoo de 14 inválidos con
 0 cruces de la frontera — y `tests/adversarial/test_fuzz_admision.py` —
 oráculo sin aceptación ambigua); **C2** (vinculación MAC al descriptor y
 admisión de un solo uso durable; falsificado por
 `tests/unit/test_capability_pop.py` + `tests/unit/test_admit_pipeline.py`
-(binding) y `tests/integration/test_replay_store_file.py::test_g16_*`
-(dos CAS que sobreviven reinicio)); **C10** (contratos versionados y
+(binding) y `tests/integration/test_replay_store_file.py::test_g16_*` (dos
+CAS que sobreviven reinicio)); **C10** (contratos versionados y
 verificables contra vectores dorados; falsificado por
 `tests/contract/test_golden_vectors.py` — corpus 91/19 contra ambos
-parsers — con regeneración diff cero). **C4 queda en P** con nota: su
-transición es post-inicio (resultados de ejecución) y la suite M1 no la
-ejerce (M1 no crea procesos, D-P4-α). C3 y C5–C7 siguen **P** hasta sus
-suites M2/M3. La prueba que falsaría cada claim es el test de su suite que
-ejerce la transición prometida y comprueba el rechazo, recibo o estado
-contrario; un claim que sobrevive su suite pasa a V y esta nota se
-actualiza por claim, no en bloque.)*
+parsers — con regeneración diff cero). La clase **V** es contenedor, no
+bare metal: las garantías siguen acotadas al entorno declarado (ADR-006).
+**C4 queda en P** con nota: su transición es post-inicio (resultados de
+ejecución) y la suite M1 no la ejerce (M1 no crea procesos, D-P4-α). C3 y
+C5–C7 siguen **P** hasta sus suites M2/M3. La prueba que falsaría cada
+claim es el test de su suite que ejerce la transición prometida y comprueba
+el rechazo, recibo o estado contrario; un claim que sobrevive su suite pasa
+a V y esta nota se actualiza por claim, no en bloque.)*
 
 ## No-claims (lo que ektel NO afirma)
 
