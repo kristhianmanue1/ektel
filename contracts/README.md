@@ -17,8 +17,16 @@ adoptada 2026-08-20). Autorización: `docs/decisiones/autorizacion-m0-2026-08-20
   estricto). Los sobres firmados comparten `envelope.schema.json` y
   `protected-header.schema.json`.
 - `vectors/v1/` — vectores dorados por grupo: **bytes + digest esperado +
-  diagnóstico esperado** (§5.4), válidos e inválidos. Generados de forma
-  determinista por `scripts/generate-golden-vectors.py` (la variable
+  diagnóstico esperado** (§5.4), válidos e inválidos. **Corpus: 91 vectores
+  / 19 accept** (fingerprint
+  `0d4d11fedc5e579f4b547a0bf659d0c25bdf803a4d752f5d91bcadec2487ede7`).
+  *Atribución:* el doble PROCEED del gate final M0 cubre **exclusivamente**
+  su manifest original de 90 vectores
+  (`docs/revisiones/2026-08-21-m0-gate-final/`, inmutable); el corpus de 91
+  incluye `tout-valid-accepted` (base accept de `termination_accepted`,
+  cierra el hueco de oráculo O-1) como **evidencia M1 autorizada por D-P2**
+  (acta `docs/decisiones/autorizacion-m1-2026-08-22.md` + adenda R1 regla
+  4). Generados de forma determinista por `scripts/generate-golden-vectors.py` (la variable
   `EKTEL_VECTORS_OUT` redirige la salida a un directorio temporal para el
   gate de diff cero); la clave incluida en `index.json` es **sólo de
   prueba**.

@@ -19,22 +19,25 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import fuzz_diferencial as fz  # noqa: E402
 
-# Congelados del corpus (M0-FAR-CLAUDE-01, 2026-08-21):
-CORPUS_COUNT = 90
-CORPUS_FINGERPRINT = "1c8412fec52ea6a457397a1f8a55c86bcc4503728ff2e3da882f6ffe640ddd89"
-BYTES_TOTAL = 1530         # 90 vectores x 17 mutaciones
-SEMANTIC_BASES = 18        # sólo vectores accept
-SEMANTIC_TOTAL = 165
+# Congelados del corpus (M0-FAR-CLAUDE-01, 2026-08-21; re-congelado por
+# D-P2/M1 el 2026-08-22: +tout-valid-accepted, base accept de
+# termination_accepted que cierra el hueco de oráculo O-1 — acta de
+# autorización M1 + adenda R1 regla 4):
+CORPUS_COUNT = 91
+CORPUS_FINGERPRINT = "0d4d11fedc5e579f4b547a0bf659d0c25bdf803a4d752f5d91bcadec2487ede7"
+BYTES_TOTAL = 1547         # 91 vectores x 17 mutaciones
+SEMANTIC_BASES = 19        # sólo vectores accept
+SEMANTIC_TOTAL = 172
 SEMANTIC_PER_CLASS = {
     "payload_sv_2": 4, "payload_sv_0": 4, "payload_sv_neg": 4,
     "payload_sv_true": 4, "payload_extra": 4, "payload_missing": 4,
     "payload_pattern_nl": 4, "header_sv_2": 4, "header_extra": 4,
     "header_typ_int": 4,
-    "doc_sv_2": 14, "doc_sv_0": 14, "doc_sv_neg": 14, "doc_sv_true": 14,
-    "doc_extra": 14, "doc_missing": 14, "doc_pattern_nl": 10,
+    "doc_sv_2": 15, "doc_sv_0": 15, "doc_sv_neg": 15, "doc_sv_true": 15,
+    "doc_extra": 15, "doc_missing": 15, "doc_pattern_nl": 10,
     "doc_maxitems": 4, "doc_args_257": 4, "doc_minlength": 4,
     "doc_array_max_65": 4,
-    "doc_disc_type_confusion": 5, "doc_enum_item_type": 4, "doc_const_type": 4,
+    "doc_disc_type_confusion": 6, "doc_enum_item_type": 4, "doc_const_type": 4,
     "pop_nonce_len_plus_mac_recomputed": 1,
     "pop_payload_digest_len_plus_mac_recomputed": 1,
 }

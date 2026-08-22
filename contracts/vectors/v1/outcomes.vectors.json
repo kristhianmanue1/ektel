@@ -81,6 +81,17 @@
    }
   },
   {
+   "id": "tout-valid-accepted",
+   "wire_type": "termination-outcome",
+   "description": "TerminationAccepted con recibo (base accept de la alternativa; D-P2/O-1).",
+   "encoding": "base64",
+   "bytes": "eyJvdXRjb21lIjoidGVybWluYXRpb25fYWNjZXB0ZWQiLCJyZWNlaXB0Ijoib3BhcXVlIiwic2NoZW1hX3ZlcnNpb24iOjF9",
+   "expect": {
+    "verdict": "accept",
+    "diagnostic": "ok"
+   }
+  },
+  {
    "id": "eres-valid-executed",
    "wire_type": "execution-result",
    "description": "ExecutionResult executed con causa natural_exit.",

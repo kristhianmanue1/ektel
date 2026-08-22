@@ -297,6 +297,12 @@ def build_outcome_vectors(dg):
     vecs.append(vec("sout-invalid-state", "start-outcome", "Estado de ejecución en StartFailed: los tipos son por operación (C1).", emit_json(f), "reject", "invalid_value"))
     term = {"schema_version": 1, "outcome": "termination_rejected", "reason_code": "capability_rejected"}
     vecs.append(vec("tout-valid-rejected", "termination-outcome", "TerminationRejected por handle inválido.", emit_json(term), "accept", "ok"))
+    # D-P2 (M1, acta de autorización 2026-08-22): base accept de la alternativa
+    # termination_accepted — cierra el hueco de oráculo O-1 del gate final M0
+    # (la rama sólo se ejercía en reject por tout-invalid-accepted-extra, que
+    # es exactamente este documento + extra_field).
+    term_ok = {"schema_version": 1, "outcome": "termination_accepted", "receipt": "opaque"}
+    vecs.append(vec("tout-valid-accepted", "termination-outcome", "TerminationAccepted con recibo (base accept de la alternativa; D-P2/O-1).", emit_json(term_ok), "accept", "ok"))
     result = {
         "schema_version": 1,
         "action_id": "action-0001",
