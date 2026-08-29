@@ -37,5 +37,6 @@ proyecto.
   — fuera del paquete M1-R1; compara identidad byte-a-byte, descriptor canónico
   y revalidación semántica sin convertir el token actual en permiso suficiente
   ni iniciar M2. Su alternativa de reenvío con revalidación se desarrolla en
-  [ADR-011 propuesta](../adr/adr-011-handoff-admision-start.md), todavía no
-  aceptada y sin autoridad de implementación.
+  [ADR-011 aceptada](../adr/adr-011-handoff-admision-start.md), normativa por
+  [acta propia](../decisiones/aceptacion-adr-011-handoff-2026-08-28.md), pero
+  todavía sin autoridad para implementar M2.

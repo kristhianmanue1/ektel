@@ -1,15 +1,16 @@
 # Borrador separado: handoff de admisión hacia M2
 
-**Fecha:** 2026-08-28. **Estado:** borrador separado de M1-R1, no vinculante.
-Sirvió de base para la propuesta
-`docs/adr/adr-011-handoff-admision-start.md`, que permanece pendiente de
-aceptación explícita. No autoriza implementación de M2, cambios wire, procesos
-reales ni supervisión.
+**Fecha:** 2026-08-28. **Estado:** antecedente histórico no vinculante.
+Sirvió de base para `docs/adr/adr-011-handoff-admision-start.md`, aceptada por
+`docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md`. La ADR y su acta
+mandan ante cualquier divergencia con este borrador. Ninguno de estos
+documentos autoriza la implementación de M2, cambios wire, procesos reales ni
+supervisión.
 
 ## Bloqueo observado
 
-La especificación declara `start(AdmittedAction)`, exige consumir el token por
-CAS inmediatamente antes del spawn y define
+Antes de ADR-011, la especificación declaraba `start(AdmittedAction)`, exigía
+consumir el token por CAS inmediatamente antes del spawn y definía
 `deadline_eff = min(deadline_solicitado, exp - now_wall)`. El token de admisión
 M1 actual liga identidad, `action_id`, `exp` e `issuer_id`, pero no transporta
 el descriptor ejecutable ni el deadline solicitado. Por sí solo no contiene

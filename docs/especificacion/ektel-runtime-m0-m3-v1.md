@@ -8,7 +8,10 @@ requiere acta explícita.
 `docs/decisiones/enmienda-transversal-v3-2026-08-20.md`; v1.0 y v1.1 quedan
 superadas antes de consenso. Enmendada tras la doble NO-GO externa de M0 por
 `docs/decisiones/enmienda-correccion-m0-2026-08-20.md` (canonicalidad
-base64url ADR-010, precedencia de diagnósticos, vocabularios y asientos).
+base64url ADR-010, precedencia de diagnósticos, vocabularios y asientos), y el
+2026-08-28 por
+`docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md` (handoff local
+`StartRequest`; no cambia `schema_version` v1 ni autoriza M2).
 **Versión de los contratos:** `schema_version` v1 en todos los wire types.
 
 ## 0. Autoridad y genealogía
@@ -33,7 +36,11 @@ Este documento funde en una sola fuente normativa:
   Codex);
 - la segunda ronda externa con su acta
   `enmienda-transversal-v3-2026-08-20.md` (C1–C6 de Codex y D1–D5 de
-  Claude).
+  Claude); y
+- ADR-010, incorporada por
+  `docs/decisiones/enmienda-correccion-m0-2026-08-20.md`, y ADR-011,
+  aceptada por
+  `docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md`.
 
 Ante conflicto, **desde el consenso del 2026-08-20**: manda este documento;
 después los ADR; después la tabla pública para lenguaje externo; la propuesta
@@ -41,8 +48,8 @@ y los documentos anteriores son evidencia de evolución, no fuentes normativas.
 La evidencia reproducible manda sobre cualquier promesa narrativa (propuesta
 §2).
 
-**M0 está autorizado** por acta separada
-(`docs/decisiones/autorizacion-m0-2026-08-20.md`, propuesta §21.6); M1–M3 no.
+**M0 y M1 están autorizados, implementados y cerrados** por sus actas
+separadas; M2 y M3 siguen sin autorizar (§19.6).
 
 ## 1. Decisión adoptada
 
@@ -274,7 +281,11 @@ reemplazable y no forma parte del modelo de autorización.
    estándar** (§5.2, dominio `ektel/admission/v1`) cuyo payload v1 es
    `{schema_version, identity_digest, action_id, exp, issuer_id}` — la
    construcción sobre-JWS elimina la ambigüedad de concatenación de la
-   redacción anterior. La reserva del nonce y el consumo del token son
+   redacción anterior. El token por sí solo no contiene el descriptor
+   ejecutable ni autentica los bytes completos del `ActionRequest`: `start`
+   recibe el tipo local `StartRequest` y revalida la equivalencia ejecutable
+   definida en §8.0; no se afirma identidad byte-a-byte del request exterior
+   (ADR-011, N17). La reserva del nonce y el consumo del token son
    **dos registros CAS durable distintos** (§7.4): `nonce_reservation` en
    `admit` y `start_token_consumption` inmediatamente antes del spawn; un
    crash entre el CAS y el spawn deja el token permanentemente gastado y
@@ -340,7 +351,7 @@ sólo por digest o forma redactada (§10).
 
 ```text
 admit(ActionRequest) -> AdmissionOutcome
-start(AdmittedAction) -> StartOutcome
+start(StartRequest) -> StartOutcome
 terminate(ExecutionHandle, TerminationReason) -> TerminationOutcome
 await_result(ExecutionHandle) -> ExecutionResult
 verify_receipt(Receipt) -> VerificationResult
@@ -349,7 +360,44 @@ verify_receipt(Receipt) -> VerificationResult
 Los tipos de resultado son por operación (C1, §8.3): ninguno carga estados
 que su interfaz no puede producir.
 
-**Autorización de `terminate` (enmienda R1, reescrita tras F3; interfaz
+### 8.0 `StartRequest` y handoff `admit` → `start` (ADR-011)
+
+`StartRequest { admitted_action: str, action_request_wire: bytes }` es un tipo
+local experimental del núcleo, no un documento JSON ni una capacidad. El
+llamador debe reenviar los bytes entregados a `admit`, bajo el techo global de
+64 KiB, pero el token v1 no permite demostrar identidad byte-a-byte del
+documento exterior. La garantía implementable es equivalencia del material
+ejecutable revalidado (N17).
+
+Antes de cualquier efecto, `start` valida tipos y tamaño, verifica MAC y
+payload cerrado del token, parsea de nuevo el request, repite
+representabilidad, capacidad, PoP y binding, exige igualdad de
+`identity_digest`, `action_id`, `exp` e `issuer_id`, y construye desde esa única
+instantánea un plan de ejecución inmutable. Esta ruta es pura: no reserva de
+nuevo el nonce, no reevalúa `PolicyPort` y no emite otro token. El `Allow` es
+válido en el instante de admisión; no constituye una lease continua hasta el
+spawn.
+
+`start` exige `now_wall < exp`, sin reutilizar la tolerancia de skew de
+admisión. Calcula conservadoramente en milisegundos enteros
+`deadline_eff_ms = min(deadline_ms, floor((exp - now_wall) * 1000))`, mediante
+aritmética exacta equivalente que nunca redondee al alza. Cuando la auditoría
+sea obligatoria, obtiene primero el recibo `flush_protocol_completed`; luego
+toma una nueva muestra de reloj y recalcula el plazo; después consume por CAS
+`identity_digest`; y sólo un resultado `CONSUMED` puede cruzar la frontera de
+proceso. Un resultado ambiguo se reconcilia conservadoramente: `spent` implica
+`start_failed_indeterminate`; `unspent`, fallo sin spawn y reintento explícito;
+`unknown`, `start_failed_indeterminate`. Nunca se habilita replay.
+
+Ektel no persiste por este handoff una copia adicional del comando, entorno o
+stdin y no promete recuperación autónoma del descriptor tras reinicio. Esta
+decisión tampoco cierra el TOCTOU de una ruta mutable ni liga el contenido del
+binario ejecutado (N1). Si `StartRequest` cruza en el futuro un límite de
+proceso o red, requiere un wire contract versionado propio.
+
+### Autorización de `terminate`
+
+**Enmienda R1, reescrita tras F3; interfaz
 corregida por B2):** `terminate` recibe el `ExecutionHandle` emitido por
 `start`, que porta un **token opaco de terminación** ligado a la capacidad
 **tal como fue admitida para ese `action_id`** y al evento de admisión
@@ -368,7 +416,7 @@ eventos.
 
 Campos (propuesta §7.2, sin cambios): `schema_version`, `action_id`,
 `command_absolute`, `args`, `cwd`, `env_allowlist_values`, `stdin_policy`,
-`deadline`, `capability_envelope`, `invocation_proof`, `nonce`,
+`deadline_ms`, `capability_envelope`, `invocation_proof`, `nonce`,
 `repair_policy`, `output_limits`, `requested_guarantees`,
 `metadata_opaque`. Restricciones de la propuesta §7.2 se mantienen,
 incluida: `command_absolute` no implica identidad suficiente del artefacto
@@ -688,9 +736,10 @@ Criterio de adopción (propuesta §21) a la fecha de esta v1.2:
    (`enmienda-transversal-b1-b8-2026-08-19.md`).
 4. Tabla de claims/no-claims — **cumplida y enmendada con acta**
    (consensuada 2026-08-19; C2, C8, N8, N14, N16 corregidos por B1–B7).
-5. ADR con responsable — **cumplido** (ADR-001 a ADR-009 aceptados;
-   enmiendas posteriores con acta, por la regla nacida del defecto de
-   gobernanza reconocido en `enmienda-adr-007-durabilidad-2026-08-19.md`).
+5. ADR con responsable — **cumplido** (ADR-001 a ADR-011 aceptados; ADR-010
+   y ADR-011 por actas propias, y toda enmienda posterior con acta, conforme a
+   la regla nacida del defecto de gobernanza reconocido en
+   `enmienda-adr-007-durabilidad-2026-08-19.md`).
 6. Autorización separada de M0 y de cada hito — **cumplido para M0**
    (2026-08-20, `docs/decisiones/autorizacion-m0-2026-08-20.md`, tras la
    revisión cruzada final y el consenso explícito de esta v1.2) y **para

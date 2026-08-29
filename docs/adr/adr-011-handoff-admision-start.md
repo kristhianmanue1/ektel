@@ -1,6 +1,8 @@
 # ADR-011: Handoff de admisión hacia `start`
 
-**Estado:** **propuesto para decisión del dueño** — no aceptado ni normativo.
+**Estado:** **aceptado y normativo** — Kristhian Manuel Jimenez Sanchez
+(`krisnova@hotmail.com`), 2026-08-28, mediante
+`docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md`.
 No autoriza M2, cambios de schemas, proceso real, supervisión, tag ni release.
 
 **Fecha:** 2026-08-28.
@@ -8,8 +10,8 @@ No autoriza M2, cambios de schemas, proceso real, supervisión, tag ni release.
 **Origen:** cierre administrativo M1-R1 y
 `docs/propuestas/propuesta-handoff-admision-m2-2026-08-28.md`. Resuelve el
 bloqueo contractual entre el token emitido por M1 y el descriptor que M2
-necesitaría para crear un proceso. Debe recibir aceptación explícita separada
-antes de modificar la especificación normativa o construir M2.
+necesitaría para crear un proceso. Su aceptación modifica la especificación
+normativa, pero la construcción de M2 requiere autorización explícita separada.
 
 **Contexto normativo relacionado:** ADR-003 (identidad y token de admisión),
 ADR-004 (vigencia y dos CAS), ADR-005 (resultados de `start`), ADR-007
@@ -18,8 +20,9 @@ ADR-009 (mecánica de supervisión).
 
 ## 1. Problema
 
-La API vigente declara `start(AdmittedAction)`, pero el `admitted_action` v1
-sólo autentica `{identity_digest, action_id, exp, issuer_id}`. No contiene
+Antes de esta decisión, la API vigente declaraba `start(AdmittedAction)`, pero
+el `admitted_action` v1 sólo autentica
+`{identity_digest, action_id, exp, issuer_id}`. No contiene
 `command_absolute`, argumentos, entorno, cwd, stdin, límites de salida ni
 `deadline_ms`. Por tanto, el token no basta para construir la ejecución y no
 autoriza recuperar esos datos desde una fuente mutable implícita.
@@ -30,7 +33,7 @@ pueden reutilizar la misma capacidad y producir el mismo token si conservan las
 invariantes ligadas por `action_binding`. El diseño v1 no puede demostrar que
 los bytes presentados a `start` sean los mismos que observó `admit`.
 
-## 2. Decisión propuesta
+## 2. Decisión
 
 ### 2.1 Tipo local compuesto
 
@@ -232,8 +235,8 @@ spawn.
 - El costo es repetir parseo, cripto y representabilidad en `start`; no se
   repiten política ni reserva de nonce.
 - El token v1 conserva compatibilidad; cambia la firma conceptual de la API
-  local, por lo que especificación y tarjetas M2 deberán enmendarse sólo después
-  de aceptar esta ADR.
+  local. La especificación queda enmendada por el acta de aceptación; cualquier
+  tarjeta M2 conserva su requisito de autorización separada.
 - No se cierra el TOCTOU del ejecutable por ruta: continúa
   `route_mutable_unverified` (D7a).
 - No se demuestra que el request reenviado sea byte-a-byte el original.
@@ -244,8 +247,8 @@ spawn.
 
 ## 5. Criterios de aceptación de la futura implementación M2
 
-Esta ADR sólo podría promoverse a construcción M2 con una tarjeta separada que
-exija, como mínimo:
+La construcción M2 requiere una tarjeta y autorización separadas que exijan,
+como mínimo:
 
 1. vectores y pruebas negativas para token malformado, MAC, campos cruzados,
    request distinto, expiración y tipos hostiles;
@@ -265,8 +268,7 @@ exija, como mínimo:
 
 ## 6. Stop rule
 
-Mientras el dueño no marque esta ADR como aceptada, no modificar schemas,
-especificación normativa, token, API productiva, replay store ni frontera de
-spawn. Aceptar la ADR tampoco autoriza M2: la implementación requiere una
-tarjeta, DoD, alcance y autorización propios. No iniciar M3, tag ni release por
-efecto de esta propuesta.
+La aceptación de esta ADR no autoriza M2: hasta que exista una tarjeta con DoD,
+alcance y autorización propios, no modificar schemas, token, API productiva,
+replay store ni frontera de spawn. No iniciar M3, tag ni release por efecto de
+esta decisión.

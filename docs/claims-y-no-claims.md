@@ -6,11 +6,14 @@ veredicto externo
 **enmendada con acta** por la ronda correctiva B1–B8
 (`docs/decisiones/enmienda-transversal-b1-b8-2026-08-19.md`) y por la
 segunda ronda externa C1–C6/D1–D5 del 2026-08-20
-(`docs/decisiones/enmienda-transversal-v3-2026-08-20.md`).
+(`docs/decisiones/enmienda-transversal-v3-2026-08-20.md`) y por la aceptación
+de ADR-011 del 2026-08-28
+(`docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md`).
 Actas: `docs/decisiones/consenso-tabla-claims-2026-08-19.md`,
 `docs/decisiones/enmienda-transversal-b1-b8-2026-08-19.md` y
-`docs/decisiones/enmienda-transversal-v3-2026-08-20.md`.
-**Fecha:** 2026-08-20. **Requisito:** §21.4 del criterio de adopción de la
+`docs/decisiones/enmienda-transversal-v3-2026-08-20.md`, más
+`docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md`.
+**Fecha:** 2026-08-28. **Requisito:** §21.4 del criterio de adopción de la
 propuesta histórica M0–M3, recogido en la especificación v1.2 §19 punto 4
 (precisión editorial por acta
 `docs/decisiones/enmienda-adopcion-19-6-y-cita-tabla-2026-08-20.md`).
@@ -29,7 +32,7 @@ especificación v1.2, según el contexto de cada fila.
 | # | Claim | Clase / base |
 |---|---|---|
 | C1 | Toda acción mal formada, no autorizada o con capacidad inválida, expirada o reutilizada se rechaza antes de iniciar cualquier proceso (fail-closed en admisión). | Diseño: §6.2, ADR-003/004 |
-| C2 | La autorización queda vinculada **al descriptor admitido y a la ruta declarada** mediante identidad autenticada (MAC): HMAC-SHA256 sobre `protected_header_b64 + "." + payload_b64` tal como viaja (estilo JWS, `alg` autenticado), y admisión de un solo uso, durable tras reinicio. **No** se vincula a la identidad del contenido finalmente ejecutado (ver N1). | ADR-002/003/004 |
+| C2 | La autorización queda vinculada a la capacidad autenticada y a los campos ejecutables cubiertos por su `action_binding`: HMAC-SHA256 sobre `protected_header_b64 + "." + payload_b64` tal como viaja (estilo JWS, `alg` autenticado), con admisión y token de inicio de un solo uso durables tras reinicio. El token v1 **no** autentica los bytes completos del `ActionRequest` exterior ni la identidad del contenido finalmente ejecutado (ver N17 y N1). | ADR-002/003/004/011 |
 | C3 | El proceso se ejecuta bajo un supervisor separado con reloj monotónico, plazo, terminación dirigida del grupo observado y salida acotada con truncamiento declarado. | §6.3; plataforma: ADR-006 |
 | C4 | Todo resultado es tipado y distingue terminación técnica de éxito de negocio; `executed` nunca significa éxito. | ADR-005 |
 | C5 | Toda transición observada dentro de la frontera intenta emitir un RuntimeEvent; todo fallo reconocido queda como brecha explícita o ausencia declarada, nunca rellenado. | §10, ADR-007 |
@@ -60,11 +63,13 @@ de caracterización ejercitadas 8/8) — por claim y con prueba conservada:
 **C1** (fail-closed de admisión; falsificado por
 `tests/adversarial/test_policy_spawn_frontier.py` — zoo de 14 inválidos con
 0 cruces de la frontera — y `tests/adversarial/test_fuzz_admision.py` —
-oráculo sin aceptación ambigua); **C2** (vinculación MAC al descriptor y
-admisión de un solo uso durable; falsificado por
+oráculo sin aceptación ambigua); **C2** (vinculación MAC al material cubierto
+por `action_binding` y admisión de un solo uso durable; falsificado en el
+alcance M1 por
 `tests/unit/test_capability_pop.py` + `tests/unit/test_admit_pipeline.py`
 (binding) y `tests/integration/test_replay_store_file.py::test_g16_*` (dos
-CAS que sobreviven reinicio)); **C10** (contratos versionados y
+CAS que sobreviven reinicio); el handoff `StartRequest` de ADR-011 permanece
+**P** hasta la suite M2); **C10** (contratos versionados y
 verificables contra vectores dorados; falsificado por
 `tests/contract/test_golden_vectors.py` — corpus 91/19 contra ambos
 parsers — con regeneración diff cero). La clase **V** es contenedor, no
@@ -98,6 +103,7 @@ a V y esta nota se actualiza por claim, no en bloque.)*
 *(N15 queda **reservado sin uso**: la numeración de no-claims no se compacta, igual que C9 y C8 en Claims. Ningún no-claim fue retirado en silencio.)*
 
 | N16 | Ektel afirma la **presencia** de un `Allow` del PolicyPort, no la corrección de la política externa. El núcleo **sí** valida el sobre de respuesta (forma, `decision_id`, vigencia `valid_until` contra reloj de pared con tolerancia declarada, recepción dentro del timeout) y convierte un `Allow` expirado o tardío en rechazo cuando el puerto es requerido; lo que **no** valida es que el adaptador decida bien ni que su política sea justa — eso es del adaptador, bajo su propio contrato (pareja de C6). | ADR-008 |
+| N17 | El token de admisión v1 no demuestra que `action_request_wire` presentado a `start` sea byte-a-byte el documento exterior observado por `admit`. `start` sólo puede revalidar equivalencia del material ejecutable cubierto por la capacidad; serialización exterior y `metadata_opaque` no quedan ligados por el token. | ADR-011 |
 
 ## Regla de uso
 
