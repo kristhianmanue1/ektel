@@ -40,3 +40,8 @@ proyecto.
   [ADR-011 aceptada](../adr/adr-011-handoff-admision-start.md), normativa por
   [acta propia](../decisiones/aceptacion-adr-011-handoff-2026-08-28.md), pero
   todavía sin autoridad para implementar M2.
+- [Paquete de preparación para la decisión sobre M2](paquete-preparacion-m2-2026-08-28.md)
+  — **NO autoriza M2**: tarjeta no vinculante que traduce
+  ADR-003/004/005/006/007/008/009/010/011 a alcance, DoD y quince gates, expone
+  cinco decisiones locales aún abiertas y recomienda resolverlas mediante
+  ADR-012 antes de una autorización separada de código.
