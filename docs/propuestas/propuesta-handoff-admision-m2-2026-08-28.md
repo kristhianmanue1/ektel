@@ -1,8 +1,10 @@
 # Borrador separado: handoff de admisión hacia M2
 
-**Fecha:** 2026-08-28. **Estado:** borrador separado de M1-R1, no vinculante
-y pendiente de decisión adversarial. No autoriza implementación de M2,
-cambios wire, procesos reales ni supervisión.
+**Fecha:** 2026-08-28. **Estado:** borrador separado de M1-R1, no vinculante.
+Sirvió de base para la propuesta
+`docs/adr/adr-011-handoff-admision-start.md`, que permanece pendiente de
+aceptación explícita. No autoriza implementación de M2, cambios wire, procesos
+reales ni supervisión.
 
 ## Bloqueo observado
 

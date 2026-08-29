@@ -36,4 +36,6 @@ proyecto.
 - [Borrador separado: handoff admisión → M2](propuesta-handoff-admision-m2-2026-08-28.md)
   — fuera del paquete M1-R1; compara identidad byte-a-byte, descriptor canónico
   y revalidación semántica sin convertir el token actual en permiso suficiente
-  ni iniciar M2.
+  ni iniciar M2. Su alternativa de reenvío con revalidación se desarrolla en
+  [ADR-011 propuesta](../adr/adr-011-handoff-admision-start.md), todavía no
+  aceptada y sin autoridad de implementación.
