@@ -89,6 +89,135 @@ class PolicyG7Tests(unittest.TestCase):
             policy_mode="required").admit(valid_request_bytes())
         self.assertEqual(out.reason_code, "policy_unavailable")
 
+    def test_required_allow_con_campos_invalidos_rechaza(self):
+        decisions = (
+            Allow("d1", float("nan")),
+            Allow("d1", 10 ** 1000),
+            Allow("d1", (1 << 53) + 1),
+            Allow(123, NOW + 3600),  # type: ignore[arg-type]
+            Allow("", NOW + 3600),
+        )
+        for decision in decisions:
+            with self.subTest(decision=decision):
+                out = make_service(
+                    policy_port=FakePolicyPort(decision),
+                    policy_mode="required").admit(valid_request_bytes())
+                self.assertEqual(out.reason_code, "policy_unavailable")
+
+    def test_deny_malformado_conserva_rechazo_en_required_y_optional(self):
+        for decision in (Deny(""), Deny(123)):  # type: ignore[arg-type]
+            for mode in ("required", "optional"):
+                with self.subTest(decision=decision, mode=mode):
+                    out = make_service(
+                        policy_port=FakePolicyPort(decision),
+                        policy_mode=mode).admit(valid_request_bytes())
+                    self.assertEqual((out.reason_code, out.safe_detail),
+                                     ("policy_denied", "policy:deny"))
+
+    def test_required_indeterminate_malformado_rechaza(self):
+        for decision in (
+            Indeterminate(""),
+            Indeterminate(123),  # type: ignore[arg-type]
+        ):
+            with self.subTest(decision=decision):
+                out = make_service(
+                    policy_port=FakePolicyPort(decision),
+                    policy_mode="required").admit(valid_request_bytes())
+                self.assertEqual((out.reason_code, out.safe_detail),
+                                 ("policy_unavailable", "policy:unavailable"))
+
+    def test_required_resultado_desconocido_y_excepcion_rechazan_tipado(self):
+        class UnknownPolicy:
+            def evaluate(self, request):
+                return {"decision": "allow"}
+
+        class RaisingPolicy:
+            def evaluate(self, request):
+                raise RuntimeError("detalle no confiable")
+
+        for port in (UnknownPolicy(), RaisingPolicy()):
+            with self.subTest(port=type(port).__name__):
+                out = make_service(policy_port=port,
+                                   policy_mode="required").admit(valid_request_bytes())
+                self.assertEqual((out.reason_code, out.safe_detail),
+                                 ("policy_unavailable", "policy:unavailable"))
+
+    def test_optional_excepcion_degrada_sin_filtrar_detalle(self):
+        class RaisingPolicy:
+            def evaluate(self, request):
+                raise RuntimeError("secreto del adaptador")
+
+        out = make_service(policy_port=RaisingPolicy(),
+                           policy_mode="optional").admit(valid_request_bytes())
+        self.assertIsInstance(out, Admitted)
+        self.assertTrue(out.policy_degraded)
+
+    def test_allow_hostil_no_lee_campos_dos_veces_ni_propaga_excepcion(self):
+        class SpoofedAllow:
+            __class__ = Allow
+
+            @property
+            def decision_id(self):
+                raise RuntimeError("campo controlado")
+
+            @property
+            def valid_until_wall(self):
+                raise RuntimeError("campo controlado")
+
+        class HostileInt(int):
+            def __float__(self):
+                raise RuntimeError("conversion controlada")
+
+        for decision in (
+            SpoofedAllow(),
+            Allow("d1", HostileInt(NOW + 3600)),
+            Allow(HostileInt(1), NOW + 3600),  # type: ignore[arg-type]
+        ):
+            with self.subTest(decision=type(decision).__name__):
+                out = make_service(
+                    policy_port=FakePolicyPort(decision),
+                    policy_mode="required").admit(valid_request_bytes())
+                self.assertEqual((out.reason_code, out.safe_detail),
+                                 ("policy_unavailable", "policy:unavailable"))
+
+    def test_deny_no_se_degrada_por_segundo_reloj_monotonico(self):
+        from helpers_m1 import MemoryReplayStore, TEST_KEY, TEST_SALT
+        from src.application.admit import AdmissionService
+
+        ticks = iter((10.0, 9.0))
+        svc = AdmissionService(
+            replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+            operator_key=TEST_KEY,
+            policy_port=FakePolicyPort(Deny("d1")), policy_mode="optional",
+            wall_clock=lambda: NOW, mono_clock=lambda: next(ticks))
+        out = svc.admit(valid_request_bytes())
+        self.assertEqual((out.reason_code, out.safe_detail),
+                         ("policy_denied", "policy:deny"))
+
+    def test_reloj_monotonico_regresivo_y_reloj_pared_nan_rechazan(self):
+        from helpers_m1 import MemoryReplayStore, TEST_KEY, TEST_SALT
+        from src.application.admit import AdmissionService
+
+        ticks = iter((10.0, 9.0))
+        regressive = AdmissionService(
+            replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+            operator_key=TEST_KEY,
+            policy_port=FakePolicyPort(Allow("d1", NOW + 3600)),
+            policy_mode="required", wall_clock=lambda: NOW,
+            mono_clock=lambda: next(ticks))
+        out = regressive.admit(valid_request_bytes())
+        self.assertEqual(out.reason_code, "policy_unavailable")
+
+        walls = iter((float(NOW), float("nan")))
+        invalid_wall = AdmissionService(
+            replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+            operator_key=TEST_KEY,
+            policy_port=FakePolicyPort(Allow("d1", NOW + 3600)),
+            policy_mode="required", wall_clock=lambda: next(walls),
+            mono_clock=lambda: 0.0)
+        out = invalid_wall.admit(valid_request_bytes())
+        self.assertEqual(out.reason_code, "policy_unavailable")
+
     def test_required_allow_tardio(self):
         # B7: recepción fuera del plazo monotónico → como Indeterminate.
         # (reloj monotónico REAL: el helper fija uno constante para

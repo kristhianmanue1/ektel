@@ -126,6 +126,36 @@ class FileStoreTests(unittest.TestCase):
         self.assertEqual(store.reserve_nonce("op", "viejo", time.time() + 60),
                          ReserveOutcome.RESERVED)  # re-reservable tras TTL
 
+    def test_g11_reloj_mantenimiento_invalido_no_muta(self):
+        store = self._store()
+        self.assertEqual(store.reserve_nonce("op", "vivo", time.time() + 3600),
+                         ReserveOutcome.RESERVED)
+        for value in (float("nan"), float("inf"), float("-inf"),
+                      10 ** 1000, True, "bad"):
+            with self.subTest(now_wall=value), self.assertRaises(ReplayStoreError):
+                store.collect_expired(value)  # type: ignore[arg-type]
+            self.assertEqual(store.reserve_nonce("op", "vivo", time.time() + 3600),
+                             ReserveOutcome.ALREADY_RESERVED)
+
+    def test_configuracion_y_ttl_no_finitos_fallan_cerrado(self):
+        for value in (0, -1, True, 1.5, "bad"):
+            with self.subTest(max_nonces=value), self.assertRaises(ReplayStoreError):
+                FileReplayStore(self.dir, max_nonces=value)  # type: ignore[arg-type]
+        store = self._store()
+        for value in (float("nan"), float("inf"), 10 ** 1000,
+                      (1 << 53) + 1, True, "bad"):
+            with self.subTest(reserve_until_wall=value):
+                self.assertEqual(
+                    store.reserve_nonce("op", "otro", value),  # type: ignore[arg-type]
+                    ReserveOutcome.UNAVAILABLE)
+
+        class HostileInt(int):
+            def __float__(self):
+                raise RuntimeError("conversion controlada")
+
+        self.assertEqual(store.reserve_nonce("op", "hostil", HostileInt(5)),
+                         ReserveOutcome.UNAVAILABLE)
+
     def test_g11_ttl_opportunista_bajo_limite(self):
         store = self._store(max_nonces=1)
         store.reserve_nonce("op", "viejo", reserve_until_wall=1.0)

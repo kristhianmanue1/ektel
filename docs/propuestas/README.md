@@ -29,3 +29,11 @@ proyecto.
   (2026-08-22); ampliada por adenda autorizada del dueño el mismo día (el
   acta la referencia). La ronda adversarial sobre el paquete se registra en
   [../revisiones/2026-08-22-pre-m1-adversarial.md](../revisiones/2026-08-22-pre-m1-adversarial.md).
+- [Paquete de corrección M1-R1](paquete-correccion-m1-r1-2026-08-28.md)
+  — endurecimiento fail-closed de relojes, configuración temporal, respuesta
+  del `PolicyPort` y mantenimiento del replay store. No cambia el cierre de
+  M1 ni autoriza M2/M3.
+- [Borrador separado: handoff admisión → M2](propuesta-handoff-admision-m2-2026-08-28.md)
+  — fuera del paquete M1-R1; compara identidad byte-a-byte, descriptor canónico
+  y revalidación semántica sin convertir el token actual en permiso suficiente
+  ni iniciar M2.

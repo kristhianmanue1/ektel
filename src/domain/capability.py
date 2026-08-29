@@ -20,6 +20,7 @@ API EXPERIMENTAL (spec §16). stdlib-only.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +40,17 @@ class CapabilityView:
     action_binding: dict[str, object]
 
 
+def _finite_float(value: object) -> float | None:
+    """Convierte sólo números reales finitos; bool no es tiempo válido."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    try:
+        converted = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return converted if math.isfinite(converted) else None
+
+
 def verify_capability(envelope_dict: dict[str, object], operator_key: bytes,
                       active_key_id: str, now_wall: float,
                       skew_tolerance_s: float) -> CapabilityView | str:
@@ -54,9 +66,22 @@ def verify_capability(envelope_dict: dict[str, object], operator_key: bytes,
         return "key_id_mismatch"
     nbf = int(payload["nbf"])
     exp = int(payload["exp"])
-    if now_wall < nbf - skew_tolerance_s:
+    now = _finite_float(now_wall)
+    skew = _finite_float(skew_tolerance_s)
+    if now is None or skew is None or skew < 0.0:
+        return "time_input_invalid"
+    # Reordenar evita convertir implícitamente claims enteros arbitrarios a
+    # float (`10**1000 - 30.0` lanza OverflowError). Las dos cotas derivadas
+    # también deben permanecer finitas: una tolerancia que las desborde no
+    # adquiere autoridad por comparación con +/-inf.
+    not_before_boundary = now + skew
+    expiry_boundary = now - skew
+    if (not math.isfinite(not_before_boundary)
+            or not math.isfinite(expiry_boundary)):
+        return "time_range_invalid"
+    if not_before_boundary < nbf:
         return "not_yet_valid"
-    if now_wall > exp + skew_tolerance_s:
+    if expiry_boundary > exp:
         return "expired"
     return CapabilityView(
         identity_digest=result.identity_digest or "",

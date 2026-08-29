@@ -179,6 +179,96 @@ class AdmitPipelineTests(unittest.TestCase):
         self.assertEqual(out.safe_detail, "replay_store_unavailable")
         self.assertTrue(out.retryable)
 
+    def test_store_respuesta_desconocida_o_excepcion_fail_closed(self):
+        class UnknownStore(MemoryReplayStore):
+            def reserve_nonce(self, issuer_id, nonce, reserve_until_wall):
+                return None
+
+        class RaisingStore(MemoryReplayStore):
+            def reserve_nonce(self, issuer_id, nonce, reserve_until_wall):
+                raise RuntimeError("detalle no confiable")
+
+        for store in (UnknownStore(), RaisingStore()):
+            with self.subTest(store=type(store).__name__):
+                out = make_service(store=store).admit(valid_request_bytes())
+                self.assertEqual(
+                    (out.reason_code, out.safe_detail, out.retryable),
+                    ("capability_rejected", "replay_store_unavailable", True))
+
+    def test_store_respuesta_hostil_no_ejecuta_igualdad(self):
+        class HostileOutcome:
+            def __eq__(self, other):
+                raise RuntimeError("comparacion controlada por adaptador")
+
+        class HostileStore(MemoryReplayStore):
+            def reserve_nonce(self, issuer_id, nonce, reserve_until_wall):
+                self._reserved.add((issuer_id, nonce))
+                return HostileOutcome()
+
+        out = make_service(store=HostileStore()).admit(valid_request_bytes())
+        self.assertEqual(
+            (out.reason_code, out.safe_detail, out.retryable),
+            ("capability_rejected", "replay_store_unavailable", True))
+
+    def test_exp_enorme_rechaza_tipado_sin_reservar_nonce(self):
+        class RecordingStore(MemoryReplayStore):
+            def __init__(self):
+                super().__init__()
+                self.calls = 0
+
+            def reserve_nonce(self, issuer_id, nonce, reserve_until_wall):
+                self.calls += 1
+                return super().reserve_nonce(issuer_id, nonce, reserve_until_wall)
+
+        store = RecordingStore()
+        env = make_capability_envelope(exp=10 ** 1000)
+        out = make_service(store=store).admit(emit_request(make_request(env=env)))
+        self.assertEqual(
+            (out.reason_code, out.safe_detail, out.retryable),
+            ("capability_rejected", "time:reserve_until_unrepresentable", False))
+        self.assertEqual(store.calls, 0)
+
+    def test_ttl_redondeado_nunca_vence_antes_de_exp(self):
+        class CapturingStore(MemoryReplayStore):
+            def __init__(self):
+                super().__init__()
+                self.reserve_until_wall = None
+
+            def reserve_nonce(self, issuer_id, nonce, reserve_until_wall):
+                self.reserve_until_wall = reserve_until_wall
+                return super().reserve_nonce(issuer_id, nonce, reserve_until_wall)
+
+        store = CapturingStore()
+        exp = (1 << 53) + 1  # no representable exactamente como float
+        env = make_capability_envelope(exp=exp)
+        out = make_service(store=store).admit(emit_request(make_request(env=env)))
+        self.assertIsInstance(out, Admitted)
+        self.assertIsNotNone(store.reserve_until_wall)
+        self.assertGreaterEqual(store.reserve_until_wall, exp)
+
+    def test_cota_temporal_derivada_no_finita_rechaza_sin_reserva(self):
+        from src.application.admit import AdmissionService
+
+        class RecordingStore(MemoryReplayStore):
+            def __init__(self):
+                super().__init__()
+                self.calls = 0
+
+            def reserve_nonce(self, issuer_id, nonce, reserve_until_wall):
+                self.calls += 1
+                return super().reserve_nonce(issuer_id, nonce, reserve_until_wall)
+
+        store = RecordingStore()
+        largest = float.fromhex("0x1.fffffffffffffp+1023")
+        svc = AdmissionService(
+            replay_store=store, deployment_salt=TEST_SALT,
+            operator_key=TEST_KEY, skew_tolerance_s=largest,
+            wall_clock=lambda: largest, mono_clock=lambda: 0.0)
+        out = svc.admit(valid_request_bytes())
+        self.assertEqual((out.reason_code, out.safe_detail),
+                         ("capability_rejected", "time_range_invalid"))
+        self.assertEqual(store.calls, 0)
+
     def test_nonce_quemado_tras_rechazo_de_politica(self):
         # §6.2/ADR-004 A1: sin efectos parciales salvo la reserva CAS; un
         # rechazo posterior (política) quema el nonce — fail-closed.
@@ -294,6 +384,51 @@ class AdmitPipelineTests(unittest.TestCase):
                 replay_store=MemoryReplayStore(), deployment_salt=b"corto",
                 operator_key=TEST_KEY, wall_clock=lambda: NOW,
                 mono_clock=lambda: 0.0)
+
+    def test_configuracion_temporal_invalida_falla_al_arrancar(self):
+        from src.application.admit import AdmissionService
+        for value in (float("nan"), float("inf"), 10 ** 1000, (1 << 53) + 1,
+                      0.0, -1.0, True):
+            with self.subTest(policy_timeout_s=value), self.assertRaises(ValueError):
+                AdmissionService(
+                    replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+                    operator_key=TEST_KEY, policy_timeout_s=value,
+                    wall_clock=lambda: NOW, mono_clock=lambda: 0.0)
+        for value in (float("nan"), float("inf"), 10 ** 1000,
+                      (1 << 53) + 1, -1.0, True):
+            with self.subTest(skew_tolerance_s=value), self.assertRaises(ValueError):
+                AdmissionService(
+                    replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+                    operator_key=TEST_KEY, skew_tolerance_s=value,
+                    wall_clock=lambda: NOW, mono_clock=lambda: 0.0)
+
+    def test_reloj_de_pared_no_finito_rechaza_sin_quemar_nonce(self):
+        from src.application.admit import AdmissionService
+        store = MemoryReplayStore()
+        invalid = AdmissionService(
+            replay_store=store, deployment_salt=TEST_SALT,
+            operator_key=TEST_KEY, wall_clock=lambda: float("nan"),
+            mono_clock=lambda: 0.0)
+        out = invalid.admit(valid_request_bytes())
+        self.assertEqual((out.reason_code, out.safe_detail, out.retryable),
+                         ("capability_rejected", "wall_clock_unavailable", True))
+        self.assertIsInstance(make_service(store=store).admit(valid_request_bytes()),
+                              Admitted)
+
+    def test_reloj_numerico_hostil_rechaza_tipado(self):
+        from src.application.admit import AdmissionService
+
+        class HostileInt(int):
+            def __float__(self):
+                raise RuntimeError("conversion controlada")
+
+        svc = AdmissionService(
+            replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+            operator_key=TEST_KEY, wall_clock=lambda: HostileInt(NOW),
+            mono_clock=lambda: 0.0)
+        out = svc.admit(valid_request_bytes())
+        self.assertEqual((out.reason_code, out.safe_detail, out.retryable),
+                         ("capability_rejected", "wall_clock_unavailable", True))
 
 
 if __name__ == "__main__":

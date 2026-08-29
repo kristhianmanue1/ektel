@@ -63,6 +63,24 @@ class CapabilityTests(unittest.TestCase):
         view = _verify(env, now=NBF + 1 + 30.0, skew=30.0)
         self.assertFalse(isinstance(view, str))
 
+    def test_claims_temporales_enormes_no_desbordan(self):
+        huge = 10 ** 1000
+        future = make_capability_envelope(nbf=huge, exp=huge + 1)
+        self.assertEqual(_verify(future), "not_yet_valid")
+
+        long_lived = make_capability_envelope(nbf=NBF, exp=huge)
+        view = _verify(long_lived)
+        self.assertFalse(isinstance(view, str))
+
+    def test_entradas_y_cotas_temporales_no_finitas_rechazan(self):
+        env = make_capability_envelope()
+        self.assertEqual(_verify(env, now=float("nan")), "time_input_invalid")
+        self.assertEqual(_verify(env, skew=float("inf")), "time_input_invalid")
+        self.assertEqual(
+            _verify(env, now=float.fromhex("0x1.fffffffffffffp+1023"),
+                    skew=float.fromhex("0x1.fffffffffffffp+1023")),
+            "time_range_invalid")
+
     def test_exp_menor_igual_nbf_rechazo_contrato(self):
         env = make_capability_envelope(exp=NBF)
         self.assertEqual(_verify(env), "contract:invalid_value")

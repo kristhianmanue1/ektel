@@ -45,7 +45,7 @@ import time
 from contextlib import contextmanager
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..ports.replay_store import ConsumeOutcome, ReserveOutcome
 
@@ -58,6 +58,32 @@ _IS_DARWIN = sys.platform == "darwin"
 
 class ReplayStoreError(Exception):
     """Fallo de arranque del store (corrupción/IO). Mensaje safe."""
+
+
+def _finite_number(value: object) -> bool:
+    if type(value) not in (int, float):
+        return False
+    numeric = cast(int | float, value)
+    try:
+        return math.isfinite(numeric)
+    except Exception:
+        return False
+
+
+def _representable_float(value: object) -> float | None:
+    """Convierte sin acortar enteros fuera de la precisión binaria."""
+    if type(value) not in (int, float):
+        return None
+    numeric = cast(int | float, value)
+    try:
+        converted = float(numeric)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if not math.isfinite(converted):
+        return None
+    if isinstance(numeric, int) and int(converted) != numeric:
+        return None
+    return converted
 
 
 def _fsync_file(fd: int) -> None:
@@ -92,6 +118,9 @@ class FileReplayStore:
     LOCK_FILENAME = ".lock"
 
     def __init__(self, directory: Path, max_nonces: int = 1_000_000) -> None:
+        if (not isinstance(max_nonces, int) or isinstance(max_nonces, bool)
+                or max_nonces <= 0):
+            raise ReplayStoreError("config:max_nonces")
         self._dir = Path(directory)
         self._max_nonces = max_nonces
         self._lock = threading.Lock()
@@ -157,9 +186,7 @@ class FileReplayStore:
             raise ReplayStoreError("state_corrupt:shape")
         nonces: dict[str, Any] = state["nonces"]
         spent: dict[str, Any] = state["spent"]
-        if (any(not isinstance(v, (int, float)) or isinstance(v, bool)
-                or not math.isfinite(v)
-                for v in nonces.values())
+        if (any(not _finite_number(v) for v in nonces.values())
                 or any(v is not True for v in spent.values())):
             raise ReplayStoreError("state_corrupt:values")
         return state
@@ -197,10 +224,12 @@ class FileReplayStore:
                       reserve_until_wall: float) -> ReserveOutcome:
         # Claves planas: NUL en issuer/nonce podría aliasar registros
         # (fail-closed ante entradas imposibles de serializar sin ambigüedad).
-        if "\x00" in issuer_id or "\x00" in nonce:
+        if (not isinstance(issuer_id, str) or not isinstance(nonce, str)
+                or "\x00" in issuer_id or "\x00" in nonce):
             return ReserveOutcome.UNAVAILABLE
         # NaN/inf nunca vencerían y no son JSON estándar (fail-closed).
-        if not math.isfinite(reserve_until_wall):
+        reserve_until = _representable_float(reserve_until_wall)
+        if reserve_until is None:
             return ReserveOutcome.UNAVAILABLE
         key = f"{issuer_id}\x00{nonce}"
         try:
@@ -210,13 +239,15 @@ class FileReplayStore:
                     return ReserveOutcome.ALREADY_RESERVED
                 # Recolección de TTL oportunista antes del límite (G11):
                 now = time.time()
+                if not _finite_number(now):
+                    return ReserveOutcome.UNAVAILABLE
                 expired = [k for k, until in self._state["nonces"].items()
                            if until < now]
                 for k in expired:
                     del self._state["nonces"][k]
                 if len(self._state["nonces"]) >= self._max_nonces:
                     return ReserveOutcome.UNAVAILABLE
-                self._state["nonces"][key] = float(reserve_until_wall)
+                self._state["nonces"][key] = reserve_until
                 self._persist(self._state)
                 return ReserveOutcome.RESERVED
         except ReplayStoreError:
@@ -248,6 +279,8 @@ class FileReplayStore:
 
     def collect_expired(self, now_wall: float) -> int:
         """Recolección explícita de nonces vencidos (G11); devuelve cuántos."""
+        if not _finite_number(now_wall):
+            raise ReplayStoreError("maintenance:invalid_wall_clock")
         with self._critical():
             self._reload()
             expired = [k for k, until in self._state["nonces"].items()

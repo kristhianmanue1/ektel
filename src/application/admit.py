@@ -43,10 +43,11 @@ pared para vigencia, monotónico para plazos; nunca se cruzan).
 """
 from __future__ import annotations
 
+import math
 import time
 from pathlib import Path
 from types import MappingProxyType
-from typing import Callable, Mapping, Optional
+from typing import Callable, Mapping, Optional, cast
 
 from ..adapters.operator_key import OperatorKeyError, load_operator_key
 from ..domain import contract_layer
@@ -80,6 +81,43 @@ _BINDING_FIELDS = (
 )
 
 
+def _representable_float(value: object) -> Optional[float]:
+    """Float finito; los enteros no pueden perder precisión al convertirse."""
+    # Tipos exactos: una subclase numérica puede controlar __float__, __int__
+    # o comparaciones en esta frontera no confiable.
+    if type(value) not in (int, float):
+        return None
+    numeric = cast(int | float, value)
+    try:
+        converted = float(numeric)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if not math.isfinite(converted):
+        return None
+    if isinstance(numeric, int) and int(converted) != numeric:
+        return None
+    return converted
+
+
+def _safe_reserve_until(exp_wall: int, skew_tolerance_s: float) -> Optional[float]:
+    """Cota durable finita que nunca vence antes del `exp` autenticado."""
+    try:
+        exp_float = float(exp_wall)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if not math.isfinite(exp_float):
+        return None
+    # Si la conversión redondeó hacia abajo, avanzar un ULP conserva la
+    # propiedad de seguridad: la reserva puede durar más, nunca menos que exp.
+    if exp_float < exp_wall:
+        exp_float = math.nextafter(exp_float, math.inf)
+    reserve_until = exp_float + skew_tolerance_s
+    if (not math.isfinite(reserve_until)
+            or reserve_until < exp_wall):
+        return None
+    return reserve_until
+
+
 def _rejected(reason: str, detail: str = "", retryable: bool = False) -> AdmissionRejected:
     return AdmissionRejected(reason_code=reason, safe_detail=detail, retryable=retryable)
 
@@ -104,6 +142,14 @@ class AdmissionService:
     ) -> None:
         if policy_mode not in POLICY_MODES:
             raise ValueError(f"policy_mode invalido: {policy_mode!r}")
+        policy_timeout = _representable_float(policy_timeout_s)
+        if policy_timeout is None or policy_timeout <= 0.0:
+            raise ValueError("policy_timeout_s debe ser finito y mayor que cero")
+        skew_tolerance = _representable_float(skew_tolerance_s)
+        if skew_tolerance is None or skew_tolerance < 0.0:
+            raise ValueError("skew_tolerance_s debe ser finito y no negativo")
+        if not callable(wall_clock) or not callable(mono_clock):
+            raise ValueError("wall_clock y mono_clock deben ser invocables")
         if (operator_key is None) == (operator_key_path is None):
             raise ValueError("indica exactamente una fuente de operator_key")
         if operator_key is None:
@@ -117,8 +163,8 @@ class AdmissionService:
         self._replay_store = replay_store
         self._policy_port = policy_port
         self._policy_mode = policy_mode
-        self._policy_timeout_s = policy_timeout_s
-        self._skew_tolerance_s = skew_tolerance_s
+        self._policy_timeout_s = policy_timeout
+        self._skew_tolerance_s = skew_tolerance
         self._wall_clock = wall_clock
         self._mono_clock = mono_clock
 
@@ -148,7 +194,10 @@ class AdmissionService:
         stdin_bytes, stdin_digest = stdin
 
         # 3. Autenticación de la capacidad (regla 2 final paso 2).
-        now_wall = self._wall_clock()
+        now_wall = self._read_clock(self._wall_clock)
+        if now_wall is None:
+            return _rejected(REASON_CAPABILITY_REJECTED,
+                             "wall_clock_unavailable", retryable=True)
         cap = verify_capability(doc["capability_envelope"], self._operator_key,
                                 self._active_key_id, now_wall,
                                 self._skew_tolerance_s)
@@ -177,11 +226,19 @@ class AdmissionService:
             return _rejected(REASON_CAPABILITY_REJECTED, pop_error)
 
         # 6. Replay: reserva CAS del nonce — único efecto durable (§6.2/§7.4).
-        reserve = self._replay_store.reserve_nonce(
-            cap.issuer_id, doc["nonce"], cap.exp + self._skew_tolerance_s)
-        if reserve == ReserveOutcome.ALREADY_RESERVED:
+        reserve_until = _safe_reserve_until(cap.exp, self._skew_tolerance_s)
+        if reserve_until is None:
+            return _rejected(REASON_CAPABILITY_REJECTED,
+                             "time:reserve_until_unrepresentable")
+        try:
+            reserve: object = self._replay_store.reserve_nonce(
+                cap.issuer_id, doc["nonce"], reserve_until)
+        except Exception:
+            return _rejected(REASON_CAPABILITY_REJECTED,
+                             "replay_store_unavailable", retryable=True)
+        if reserve is ReserveOutcome.ALREADY_RESERVED:
             return _rejected(REASON_CAPABILITY_REJECTED, "nonce_replay")
-        if reserve == ReserveOutcome.UNAVAILABLE:
+        if reserve is not ReserveOutcome.RESERVED:
             return _rejected(REASON_CAPABILITY_REJECTED,
                              "replay_store_unavailable", retryable=True)
 
@@ -227,31 +284,79 @@ class AdmissionService:
             "command_absolute": doc.get("command_absolute"),
             "policy_mode": self._policy_mode,
         })
-        started = self._mono_clock()
-        decision = self._policy_port.evaluate(request)
-        tardy = (self._mono_clock() - started) > self._policy_timeout_s
-        if isinstance(decision, Deny):
+        started = self._read_clock(self._mono_clock)
+        if started is None:
+            return self._policy_unavailable()
+        try:
+            # El protocolo ayuda al adaptador bien formado, pero su respuesta
+            # cruza una frontera externa: se revalida desde `object`.
+            decision: object = self._policy_port.evaluate(request)
+        except Exception:
+            return self._policy_unavailable()
+        if type(decision) is Deny:
+            # La clase negativa conserva fuerza fail-closed aunque su recibo
+            # sea malformado. Degradarla como indisponibilidad en `optional`
+            # convertiría un Deny explícito en admisión.
             return None, False, "deny"
-        if isinstance(decision, Indeterminate):
+        if type(decision) is Indeterminate:
+            try:
+                reason: object = decision.reason
+            except Exception:
+                return self._policy_unavailable()
+            if type(reason) is not str or not reason:
+                return self._policy_unavailable()
             if self._policy_mode == "required":
                 return None, False, "unavailable"
             return None, True, None
-        assert isinstance(decision, Allow)
+        if type(decision) is not Allow:
+            return self._policy_unavailable()
+        try:
+            # Snapshot único: nunca validar un valor y emitir otro obtenido
+            # por una segunda lectura controlada por el adaptador.
+            decision_id: object = decision.decision_id
+            valid_until_raw: object = decision.valid_until_wall
+        except Exception:
+            return self._policy_unavailable()
+        finished = self._read_clock(self._mono_clock)
+        if finished is None:
+            return self._policy_unavailable()
+        elapsed = finished - started
+        if not math.isfinite(elapsed) or elapsed < 0.0:
+            return self._policy_unavailable()
+        tardy = elapsed > self._policy_timeout_s
         # Validación del sobre de respuesta (B7): decision_id, vigencia
         # contra reloj de pared con tolerancia, recepción dentro del plazo
         # monotónico. Un Allow expirado o tardío → Indeterminate (§9).
-        now_wall = self._wall_clock()
-        if (not decision.decision_id
-                or now_wall > decision.valid_until_wall + self._skew_tolerance_s):
-            if self._policy_mode == "required":
-                return None, False, "unavailable"
-            return None, True, None
+        now_wall = self._read_clock(self._wall_clock)
+        valid_until = _representable_float(valid_until_raw)
+        validity_boundary = (None if now_wall is None
+                             else now_wall - self._skew_tolerance_s)
+        if (type(decision_id) is not str or not decision_id
+                or valid_until is None
+                or now_wall is None
+                or validity_boundary is None
+                or not math.isfinite(validity_boundary)
+                or validity_boundary > valid_until):
+            return self._policy_unavailable()
         if tardy:
-            if self._policy_mode == "required":
-                return None, False, "unavailable"
-            return None, True, None
-        return PolicyReceipt(decision_id=decision.decision_id,
-                             valid_until_wall=decision.valid_until_wall), False, None
+            return self._policy_unavailable()
+        return PolicyReceipt(decision_id=decision_id,
+                             valid_until_wall=valid_until), False, None
+
+    def _policy_unavailable(
+        self,
+    ) -> tuple[Optional[PolicyReceipt], bool, Optional[str]]:
+        if self._policy_mode == "required":
+            return None, False, "unavailable"
+        return None, True, None
+
+    @staticmethod
+    def _read_clock(clock: Callable[[], float]) -> Optional[float]:
+        try:
+            value = clock()
+            return _representable_float(value)
+        except Exception:
+            return None
 
 
 def _guarantee_plan(requested: object) -> tuple[dict[str, object], ...]:

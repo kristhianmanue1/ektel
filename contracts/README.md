@@ -5,8 +5,8 @@ estabilidad. M0 está cerrado a nivel contractual y publicado: doble PROCEED
 externo (Codex y Claude sobre el mismo MANIFEST-ROOT `sha256:47302f74…`),
 cierre registrado en `fba5a35` y evidencia durable en
 `docs/revisiones/2026-08-21-m0-gate-final/` (commit
-`ecfde79818e74c358a515e43590106e20e013cfd`). M1, M2 y M3 no están
-autorizados.
+`ecfde79818e74c358a515e43590106e20e013cfd`). M1 fue autorizado,
+implementado y cerrado posteriormente; M2 y M3 no están autorizados.
 
 **Fuente normativa:** `docs/especificacion/ektel-runtime-m0-m3-v1.md` (v1.2,
 adoptada 2026-08-20). Autorización: `docs/decisiones/autorizacion-m0-2026-08-20.md`.
