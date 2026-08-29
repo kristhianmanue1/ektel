@@ -1,6 +1,9 @@
 # ADR-009: Mecánica de supervisión (salida acotada, terminación graduada, grupo y subreaper)
 
-**Estado:** **aceptado** — Kristhian Manuel Jimenez Sanchez (krisnova@hotmail.com), 2026-08-19. Normativo; aún no autoriza implementación por sí solo (la autorización de M0 es un acto separado, propuesta §21.6).
+**Estado:** **aceptado y enmendado por ADR-012** — Kristhian Manuel Jimenez
+Sanchez (krisnova@hotmail.com), 2026-08-19; parámetros, topología y separación
+plan/aplicación fijados el 2026-08-28. Normativo; no autoriza implementación
+M2 por sí solo.
 
 **Fecha:** 2026-08-19.
 
@@ -35,35 +38,39 @@ F1/F3/F7 allí).
    captura ilimitada es una bomba de memoria contra el propio supervisor
    (Argos F7), y en Darwin ni `RLIMIT_AS` existe como red de seguridad
    (E1).
-2. **Sin hang post-kill.** Tras `SIGKILL` al grupo, la espera de EOF tiene
-   su propio plazo acotado; si expira, el supervisor cierra los pipes y
-   declara el cierre forzado en el resultado. Un descendiente que escapó a
-   la sesión con descriptores heredados nunca puede colgar al supervisor
-   (Argos F3; criterio M2).
-3. **Terminación graduada con gracia fija:** `SIGTERM` al grupo, período de
-   gracia declarado (parámetro de despliegue, propuesta inicial: 2 s),
+2. **Sin hang post-kill.** Tras `SIGKILL` al grupo, la espera de EOF usa
+   `post_kill_drain_ms`: entero exacto, default 1000, rango 1..10000
+   (ADR-012). Si expira, el supervisor cierra los pipes y declara
+   `post_kill_forced_pipe_close=1`. Este plazo sólo acota la latencia de
+   entrega de pipes; no amplía el deadline ni cambia cuándo se recogió el
+   principal. Un descendiente con descriptores heredados no puede colgar al
+   supervisor (Argos F3; criterio M2).
+3. **Terminación graduada con gracia fija:** `SIGTERM` al grupo,
+   `termination_grace_ms` entero exacto, default 2000 y rango 0..60000,
    después `SIGKILL` al grupo. El deadline se considera cumplido cuando el
    proceso principal es recogido; la gracia está presupuestada dentro del
    deadline efectivo (el supervisor inicia la secuencia de terminación
    antes del vencimiento, no después) **y ese descuento es visible en el
-   contrato**: el `GuaranteePlan` y el resultado declaran la gracia
-   aplicada y el tiempo útil resultante (ronda correctiva 2026-08-19, B6);
-   gracia 0 (SIGKILL directo) es configuración válida declarada. El
+   contrato**: el `GuaranteePlan` declara la configuración y la fórmula,
+   mientras `guarantees_applied` declara la gracia y el tiempo útil realmente
+   aplicados (enmienda ADR-012); gracia 0 (SIGKILL directo) es configuración
+   válida declarada. El
    supervisor computa y registra dos instantes (segunda revisión externa
    2026-08-20, C6): `soft_termination_at` (inicio de la escalación =
    deadline efectivo menos gracia) y `hard_deadline_at` (cota absoluta); la
    clasificación del estado final es por causa, según ADR-005 punto 3.
-4. **Grupo de procesos, no sesión, como unidad de terminación:**
-   `setpgid`/grupo propio por acción. `setsid`/double-fork por parte del
+4. **Topología y grupo:** un coordinador runtime crea un proceso supervisor
+   dedicado por acción; éste queda fuera del grupo ejecutado y crea el grupo
+   propio sin `preexec_fn`. `setsid`/double-fork por parte del
    supervisado es escape declarado fuera del modelo (§12.2, ADR-001); el
    resultado lo declara, no lo persigue.
-5. **El supervisor se declara subreaper en Linux cuando el despliegue
-   requiera contabilidad multi-nivel.** Evidencia E2: sin
+5. **Sólo el supervisor dedicado se declara subreaper en Linux cuando el
+   despliegue requiera contabilidad multi-nivel.** Evidencia E2: sin
    `prctl(PR_SET_CHILD_SUBREAPER)` el CPU de un nieto huérfano es
    irrecuperable; con él se recupera vía `wait4`. Es Linux-only: en Darwin
    la magnitud "contabilidad CPU multi-nivel" se declara `unsupported`
    (ADR-006 §4), sin mitigación conocida. La declaración de subreaper es
-   parte del `GuaranteePlan` cuando se use, con su clase real
+   parte del plan como solicitud y del resultado como uso real, con su clase
    (`observed`/`reactive` según la magnitud), nunca `enforced`.
 6. **Contabilidad de CPU: clase `observed`.** El supervisor registra
    `cutime/cstime` (hijo directo recogido) y, con subreaper, descendientes
@@ -110,6 +117,9 @@ Rechazada para v1.
   ausencia de hang post-kill, gracia SIGTERM→SIGKILL determinista, y tabla
   de garantías por plataforma con subreaper en Linux / `unsupported` en
   Darwin.
+- ADR-012 añade framing/propiedad de salida, supervisor por acción,
+  `max_concurrent_actions`, valores temporales exactos y memoria publicada;
+  su gate M2 es obligatorio junto con éste.
 - El caso "proceso no cooperativo" de la matriz §14.2 se prueba contra la
   secuencia completa TERM→gracia→KILL→espera acotada de EOF.
 - La tabla pública de claims/no-claims ya refleja la retirada del claim de
@@ -132,6 +142,7 @@ huérfanos en Darwin.
 
 ## 7. Decisiones que este ADR no toma
 
-- El valor concreto de la gracia y de `output_limits` por defecto → M2 con
-  evidencia de la suite acotada.
+- Los valores concretos de gracia, drenaje, capacidad, framing y propiedad ya
+  no están abiertos: los fija ADR-012. `output_limits` permanece en el
+  `ActionRequest` wire v1.
 - Estados terminales resultantes → ADR-005.

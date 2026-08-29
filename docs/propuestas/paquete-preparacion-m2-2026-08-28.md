@@ -2,20 +2,24 @@
 
 **Fecha:** 2026-08-28.
 
-**Estado:** **propuesta para decisión del dueño — NO es autorización de
-M2**. Este documento no permite crear procesos, implementar `start`, modificar
-schemas, activar CI remoto, crear tags ni publicar releases.
+**Estado:** **decisiones resueltas documentalmente — NO es autorización de
+M2**. El dueño aceptó D-M2-1(a), D-M2-2(a), D-M2-3, D-M2-4 y D-M2-5(a) en
+`docs/decisiones/aceptacion-adr-012-supervision-m2-2026-08-28.md`; ADR-012 es
+normativa. Este documento conserva la deliberación y los gates, pero no permite
+crear procesos, implementar `start`, modificar schemas, activar CI remoto,
+crear tags ni publicar releases.
 
-**Base vigente:** M0 y M1, incluida M1-R1, están cerrados. ADR-011 está
-aceptada y gobierna el handoff `admit` → `start`; M2 y M3 siguen requiriendo
-actos separados. La CI autorizada continúa siendo exclusivamente local.
+**Base vigente:** M0 y M1, incluidas M1-R1 y M1-R2, están cerrados. ADR-011 y
+ADR-012 están aceptadas y gobiernan el handoff y el diseño de supervisión; M2 y
+M3 siguen requiriendo actos de implementación separados. La CI autorizada
+continúa siendo exclusivamente local.
 
 ## 1. Resultado del análisis previo
 
 La especificación, ADR-003/004/005/006/007/008/009/010/011, los once schemas v1
-y el runtime M1 son una base suficiente para **preparar** M2, pero no todavía
-para autorizar su implementación. Permanecen cinco decisiones locales que no
-deben improvisarse dentro del código:
+y el runtime M1 resultaron una base suficiente para **preparar** M2, pero no
+para autorizar su implementación. El análisis encontró cinco decisiones
+locales que no debían improvisarse dentro del código:
 
 1. el wire `ExecutionResult v1` informa truncamiento y bytes descartados, pero
    no contiene stdout/stderr ni existe otro portador normativo de esos bytes;
@@ -29,19 +33,17 @@ deben improvisarse dentro del código:
    acción y alcanzan 64 MiB por stream, por lo que concurrencia sin cota haría
    falsa la afirmación de memoria acotada del supervisor.
 
-**Recomendación de gobierno:** resolver D-M2-1 a D-M2-5 mediante ADR-012 y su
-acta antes de autorizar código M2. La futura autorización M2 debe ser un acto
-posterior y separado. No reutilizar este paquete como autorización implícita.
+**Resultado de gobierno:** D-M2-1 a D-M2-5 quedaron resueltas mediante ADR-012
+y su acta. La futura autorización M2 debe ser un acto posterior y separado. No
+reutilizar este paquete como autorización implícita.
 
-**Prerrequisito nuevo verificado:** el emisor M1 de `GuaranteePlan` usa hoy
+**Prerrequisito detectado y cerrado:** el emisor M1 de `GuaranteePlan` usaba
 `failure_mode=""`, mientras el schema v1 exige una cadena no vacía; la suite M1
-comprueba magnitudes/clases, pero no valida ese resultado emitido contra el
-schema. Es deuda preexistente, no causada por esta propuesta, y no invalida por
-sí sola los CAS, fuzzers o replay durable ya cerrados. Sí bloquea promover C3 o
-usar ese plan como base de M2. Requiere una corrección gobernada **M1-R2**,
-acotada al valor honesto no vacío y a una prueba de conformidad wire, antes de
-autorizar implementación M2. La hipótesis adicional de que `policy_mode` no se
-validaba fue refutada al comprobar `AdmissionService.__init__`.
+sólo comprobaba magnitudes/clases. Era deuda preexistente, no causada por esta
+propuesta. M1-R2 la cerró con una declaración honesta no vacía, prueba contra
+ambos parsers y regresión local verde antes de aceptar ADR-012. La hipótesis
+adicional de que `policy_mode` no se validaba fue refutada al comprobar
+`AdmissionService.__init__`.
 
 ## 2. Alcance propuesto para M2
 
@@ -85,7 +87,11 @@ validaba fue refutada al comprobar `AdmissionService.__init__`.
 - CAGF dentro del núcleo, routing, memoria, plugins o delegación; y
 - CI remoto, cambios de workflow, tag, release o preparación de alfa.
 
-## 3. Decisiones D-M2 pendientes del dueño
+## 3. Decisiones D-M2 aceptadas por el dueño
+
+Las alternativas recomendadas de esta sección quedaron aceptadas sin cambios
+por el acto de ADR-012. Las preguntas se conservan como historial de la
+deliberación, no como decisiones todavía abiertas.
 
 ### D-M2-1 — Portador local de salida capturada
 
@@ -281,19 +287,22 @@ reloj, o corregirlos antes de ADR-012.
 solicitud, no un recibo AuditSink, no lleva claim de durabilidad ni MAC y nunca
 se registra completo.
 
-El primer `terminate` autenticado se linealiza en el supervisor de acción y el
-coordinador runtime guarda el receipt en el propio objeto local
-`ExecutionHandle`. Repetir la misma operación con ese objeto, dentro de la misma
+Mientras la acción está viva, el primer `terminate` autenticado se linealiza en
+el supervisor de acción y el coordinador runtime guarda el receipt en el propio
+objeto local `ExecutionHandle`. Repetir la misma operación con ese objeto, dentro de la misma
 instancia del coordinador, devuelve el mismo receipt. Si el coordinador ya
 observó y almacenó el resultado terminal, el handle válido permanece como
-metadato local acotado, la solicitud se acepta como no-op idempotente y no
-reclasifica el resultado. No existe registro global de receipts: al dejar de
-existir el handle termina también esa retención.
+metadato local acotado: el primer `terminate` post-resultado se linealiza
+atómicamente en el handle, genera y guarda su receipt, devuelve
+`TerminationAccepted` sin contactar al supervisor y no reclasifica el
+resultado. No existe registro global de receipts: al dejar de existir el handle
+termina también esa retención.
 
 Esto conserva el derecho de terminación después de la ejecución sin prometer
-persistencia. ADR-012 denomina **coordinador runtime** al proceso supervisor
-dueño del handle de ADR-003: reiniciarlo invalida todos sus handles. Reiniciar o
-perder sólo un supervisor de acción produce el estado honesto de supervisión,
+persistencia. ADR-012 denomina **coordinador runtime** al proceso dueño del
+handle que ADR-003 llamaba originalmente «proceso supervisor», y lo distingue
+del supervisor dedicado por acción: reiniciar el coordinador invalida todos sus
+handles. Reiniciar o perder sólo un supervisor de acción produce el estado honesto de supervisión,
 pero no redefine la identidad de la instancia. Un handle forjado, de otra
 instancia o discordante produce
 `TerminationRejected(capability_rejected)`; ningún otro reason code se inventa.
@@ -371,7 +380,7 @@ redefina el alcance de hitos; este paquete no hace lo segundo.
 | G-M2-06 · crash | Inyección antes/después de persistir CAS y alrededor de spawn: token gastado nunca se reabre y no se inventa handle. |
 | G-M2-07 · salida | Flood independiente de stdout/stderr, límites 0/máximo y multibyte, además de coordinador lento/caído: prefijo exacto, flags y contadores correctos; frames ≤64 KiB, máximo uno no confirmado por stream, cota estable y pico de materialización bajo ambas fórmulas D-M2-1. Expiración del drenaje fija `post_kill_forced_pipe_close=1`. RSS queda caracterizado, no declarado exacto. |
 | G-M2-08 · no-hang | Procesos que no leen stdin, ignoran TERM, mantienen pipes en descendientes, inundan salida o escapan con `setsid`: toda prueba acotada termina; escapes quedan declarados. |
-| G-M2-09 · deadline | Relojes falsos ejercen duración, `exp`, gracia mayor que vida útil, plazo efectivo cero, muestra final inválida/regresiva, empate duración/vigencia y empate con terminate; clasificación determinista sin afirmar detección de saltos entre muestras. Recolección del principal fija tiempos; drenaje post-KILL sólo extiende la latencia de entrega dentro de su cota. |
+| G-M2-09 · deadline | Relojes falsos ejercen duración, `exp`, gracia igual o mayor que vida útil, plazo efectivo cero, muestra final inválida/regresiva, empate duración/vigencia y empate con terminate; clasificación determinista sin afirmar detección de saltos entre muestras. Recolección del principal fija tiempos; drenaje post-KILL sólo extiende la latencia de entrega dentro de su cota. |
 | G-M2-10 · terminación | Handle válido/forjado/cruzado, repetición con el mismo objeto, solicitud post-resultado, destrucción del handle, reinicio del coordinador, pérdida del supervisor de acción y carrera con deadline respetan D-M2-4 y el vocabulario v1. El evento de rechazo queda marcado pendiente M3, no verde ficticio. |
 | G-M2-11 · recolección/plan | Proceso principal y descendientes observados se recogen; `GuaranteePlan` declara configuración/fórmula/topología y `guarantees_applied` los valores efectivos; Linux declara el uso real de subreaper y Darwin multi-nivel `unsupported`. La enmienda de ADR-009 está aceptada en ADR-012. |
 | G-M2-12 · capacidad | Carreras sobre `max_concurrent_actions` nunca exceden la cota ni gastan tokens por falta de slot; el handoff terminal libera el slot, un handle abandonado no deja registro global y un handle retenido conserva su propia memoria. Tests con límites máximos confirman 8 GiB + 8 MiB estables y pico de 16 GiB + 8 MiB de payload para 64 acciones, más overhead y sin claim exacto de RSS. |
@@ -386,10 +395,10 @@ permanecen P hasta M3.
 
 ## 6. Secuencia propuesta de construcción, si después se autoriza
 
-1. **PRE-M2-R2:** con autoridad separada, corregir `failure_mode` en el emisor
+1. **PRE-M2-R2 — completado:** con autoridad separada, corregir `failure_mode` en el emisor
    M1, añadir validación wire del `GuaranteePlan`, obtener `PROCEED` y cerrar
    M1-R2; todavía sin código M2.
-2. **PRE-M2-ADR:** aceptar/corregir D-M2-1..5, redactar ADR-012 y enmendar
+2. **PRE-M2-ADR — completado:** aceptar D-M2-1..5, redactar ADR-012 y enmendar
    expresamente la firma local de `await_result`, ADR-009 y las secciones
    normativas afectadas; obtener `PROCEED`, todavía sin código M2.
 3. **INC-M2-1:** tipos locales, configuración validada y revalidación pura de
@@ -419,31 +428,28 @@ final.
 El acto futuro debe enumerar archivos o capas exactas y resolver cualquier
 solapamiento con cambios ajenos antes de escribir.
 
-## 8. Forma de la siguiente decisión
+## 8. Autoridades recibidas y siguiente decisión
 
-Hay dos autoridades independientes que el dueño puede emitir juntas o por
-separado, pero que deben conservar actas y commits distintos. Para cerrar el
-prerrequisito M1:
+El dueño emitió juntas las dos autoridades independientes y se conservaron en
+actas y commits distintos. Para cerrar el prerrequisito M1 autorizó:
 
 > Autorizo una corrección M1-R2 acotada a sustituir el `failure_mode` vacío por
 > una declaración honesta no vacía, añadir la prueba wire del `GuaranteePlan` y
 > actualizar su evidencia; no autorizo otros cambios M1 ni implementar M2.
 
-Para fijar el diseño previo a M2:
+Para fijar el diseño previo a M2 aceptó:
 
 > Acepto D-M2-1(a), D-M2-2(a), D-M2-3, D-M2-4 y D-M2-5(a), y autorizo
 > redactar ADR-012 y las enmiendas normativas previas. Todavía no autorizo
 > implementar M2.
 
-El dueño puede corregir cualquier punto. Sólo después de cerrar M1-R2 y publicar
-ADR-012 con revisión final, otra decisión podrá autorizar o rechazar la
-implementación M2 con estos gates. No convertir ninguna de las dos autoridades
-anteriores en autorización implícita de M2.
+M1-R2 ya quedó cerrado y ADR-012 se publica con revisión final. La siguiente
+decisión posible es autorizar, corregir o rechazar la implementación M2 con
+estos gates. Ninguna autoridad anterior es autorización implícita de M2.
 
 ## 9. Stop rule
 
-Hasta recibir la autoridad correspondiente de §8, no implementar M1-R2, no
-crear ADR-012 y no modificar la especificación, código, schemas, tests, scripts,
-CI ni fronteras de proceso. Autorizar M1-R2 o ADR-012 tampoco autoriza M2. No
-iniciar M3, no activar GitHub Actions, no preparar tag/alfa/release y no ampliar
-el modelo de amenaza por efecto de este paquete.
+M1-R2 y ADR-012 ya consumieron sus autoridades documentales. Hasta una nueva
+autorización no implementar M2, no crear procesos ni fronteras IPC, no iniciar
+M3, no cambiar schemas/workflows, no activar GitHub Actions, no preparar
+tag/alfa/release y no ampliar el modelo de amenaza por efecto de este paquete.

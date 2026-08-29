@@ -75,7 +75,7 @@ contractual quedó registrado en `fba5a35` y su evidencia durable publicada
 en `docs/revisiones/2026-08-21-m0-gate-final/` (commit
 `ecfde79818e74c358a515e43590106e20e013cfd`).
 
-**M1 (admisión) — estado 2026-08-22: CERRADO.** Autorizado por acta
+**M1 (admisión) — estado vigente: CERRADO, incluida M1-R2.** Autorizado por acta
 (`docs/decisiones/autorizacion-m1-2026-08-22.md`, con adendas del dueño),
 implementado (dominio/puertos/adaptadores, 130 tests OK — 0 skips en Linux
 —, `mypy --strict` limpio, fuzz de admisión con oráculo) y cerrado con
@@ -83,8 +83,10 @@ evidencia en **dos plataformas** — Darwin arm64 (clase L) y Linux aarch64
 en contenedor (clase V, imagen fijada por digest:
 `docs/evidencia/g15-linux-aarch64-m1-2026-08-22.md`) — actas:
 `docs/decisiones/estado-post-m1-2026-08-22.md` y
-`docs/decisiones/cierre-m1-2026-08-22.md`. **M2 y M3 siguen sin
-autorizar.** La preparación de una versión alfa o de cualquier release queda
+`docs/decisiones/cierre-m1-2026-08-22.md`. La corrección M1-R2 cerró el
+`failure_mode` vacío del `GuaranteePlan` con prueba wire y acta propia. ADR-011
+y ADR-012 están aceptadas como diseño previo; **M2 y M3 siguen sin autorizarse
+para implementación.** La preparación de una versión alfa o de cualquier release queda
 diferida hasta que M3 esté cerrado, por decisión expresa del dueño del
 2026-08-22; el cierre de M1 no abre por sí mismo un ciclo de publicación.
 

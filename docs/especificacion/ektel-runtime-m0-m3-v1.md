@@ -11,7 +11,9 @@ superadas antes de consenso. Enmendada tras la doble NO-GO externa de M0 por
 base64url ADR-010, precedencia de diagnósticos, vocabularios y asientos), y el
 2026-08-28 por
 `docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md` (handoff local
-`StartRequest`; no cambia `schema_version` v1 ni autoriza M2).
+`StartRequest`; no cambia `schema_version` v1 ni autoriza M2), y por
+`docs/decisiones/aceptacion-adr-012-supervision-m2-2026-08-28.md` (contrato
+local, topología y parámetros previos a M2; tampoco autoriza implementarlo).
 **Versión de los contratos:** `schema_version` v1 en todos los wire types.
 
 ## 0. Autoridad y genealogía
@@ -40,7 +42,9 @@ Este documento funde en una sola fuente normativa:
 - ADR-010, incorporada por
   `docs/decisiones/enmienda-correccion-m0-2026-08-20.md`, y ADR-011,
   aceptada por
-  `docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md`.
+  `docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md`, y ADR-012,
+  aceptada por
+  `docs/decisiones/aceptacion-adr-012-supervision-m2-2026-08-28.md`.
 
 Ante conflicto, **desde el consenso del 2026-08-20**: manda este documento;
 después los ADR; después la tabla pública para lenguaje externo; la propuesta
@@ -49,7 +53,8 @@ La evidencia reproducible manda sobre cualquier promesa narrativa (propuesta
 §2).
 
 **M0 y M1 están autorizados, implementados y cerrados** por sus actas
-separadas; M2 y M3 siguen sin autorizar (§19.6).
+separadas, incluida la corrección M1-R2; ADR-011/012 fijan diseño previo pero
+M2 y M3 siguen sin autorizar (§19.6).
 
 ## 1. Decisión adoptada
 
@@ -295,14 +300,17 @@ reemplazable y no forma parte del modelo de autorización.
    delegación (D2). Los eventos y resultados nunca registran la clave ni
    el HMAC completo: sólo `key_id` (digest truncado de la clave con sal de
    despliegue).
-8. **`ExecutionHandle` (B2, C5):** lo emite `start` exitoso; porta un token
+8. **`ExecutionHandle` (B2, C5; terminología enmendada por ADR-012):** lo
+   emite `start` exitoso; porta un token
    opaco de terminación con forma de **sobre firmado estándar** (§5.2,
    dominio `ektel/termination/v1`; payload v1 `{schema_version, action_id,
    identity_digest}` — corrección M0 2026-08-20, misma razón que §6.6). Es
-   local al proceso supervisor, opaco,
+   local al coordinador runtime dueño de handles, opaco,
    no serializable, confidencial (redactado en logs y eventos; en el cable
    sólo circula su `handle_ref` para correlación) e inválido
-   tras reiniciar el supervisor; no es una capacidad bearer persistible.
+   tras reiniciar el coordinador; no es una capacidad bearer persistible. El
+   supervisor dedicado de una acción es otro proceso y su pérdida no redefine
+   la identidad del handle.
 9. **Ventana de vigencia no vacía (corrección M0):** todo payload de
    capacidad exige `exp > nbf`; `exp <= nbf` se rechaza como
    `invalid_value` en el parser de contrato, antes de cualquier lógica de
@@ -353,7 +361,7 @@ sólo por digest o forma redactada (§10).
 admit(ActionRequest) -> AdmissionOutcome
 start(StartRequest) -> StartOutcome
 terminate(ExecutionHandle, TerminationReason) -> TerminationOutcome
-await_result(ExecutionHandle) -> ExecutionResult
+await_result(ExecutionHandle) -> AwaitedExecution
 verify_receipt(Receipt) -> VerificationResult
 ```
 
@@ -380,8 +388,10 @@ spawn.
 
 `start` exige `now_wall < exp`, sin reutilizar la tolerancia de skew de
 admisión. Calcula conservadoramente en milisegundos enteros
-`deadline_eff_ms = min(deadline_ms, floor((exp - now_wall) * 1000))`, mediante
-aritmética exacta equivalente que nunca redondee al alza. Cuando la auditoría
+`now_ms = ceil_exact_ms(now_wall)`,
+`remaining_validity_ms = exp * 1000 - now_ms` y
+`deadline_eff_ms = min(deadline_ms, remaining_validity_ms)`, mediante
+aritmética racional exacta que nunca gana una fracción. Cuando la auditoría
 sea obligatoria, obtiene primero el recibo `flush_protocol_completed`; luego
 toma una nueva muestra de reloj y recalcula el plazo; después consume por CAS
 `identity_digest`; y sólo un resultado `CONSUMED` puede cruzar la frontera de
@@ -395,18 +405,37 @@ decisión tampoco cierra el TOCTOU de una ruta mutable ni liga el contenido del
 binario ejecutado (N1). Si `StartRequest` cruza en el futuro un límite de
 proceso o red, requiere un wire contract versionado propio.
 
+`AwaitedExecution { result: ExecutionResult, stdout: bytes, stderr: bytes }`
+es también un tipo local experimental (ADR-012), no un wire type. Conserva
+intacto `ExecutionResult v1`; propiedad, cotas y framing se fijan en §12.
+
 ### Autorización de `terminate`
 
 **Enmienda R1, reescrita tras F3; interfaz
 corregida por B2):** `terminate` recibe el `ExecutionHandle` emitido por
 `start`, que porta un **token opaco de terminación** ligado a la capacidad
-**tal como fue admitida para ese `action_id`** y al evento de admisión
-durable: el derecho de terminación nace de la admisión y no caduca con la
-ejecución. La interfaz anterior `terminate(ActionId, …)` no transportaba
+**tal como fue admitida para ese `action_id`**. Cuando M3 y
+`audit_mode=required` operen, el evento durable previo será una condición del
+inicio, no material añadido al token. El derecho de terminación nace del
+`start` autorizado y no caduca con la ejecución mientras viva el handle en la
+misma instancia del coordinador; no es durable frente a reinicio (ADR-003/012).
+La interfaz anterior
+`terminate(ActionId, …)` no transportaba
 material para autenticar al llamador y queda descartada. Una terminación
 sin handle válido se rechaza como `capability_rejected` y se registra como
-evento. La terminación por deadline del propio supervisor no pasa por esta
+evento cuando M3 opere la frontera; en M2 esa obligación permanece pendiente,
+no satisfecha ficticiamente. La terminación por deadline del propio supervisor no pasa por esta
 compuerta (no es iniciada por el llamador).
+
+ADR-012 cierra la semántica local: v1 sólo acepta
+`TerminationReason.OPERATOR_REQUESTED`; el receipt aceptado es opaco, local,
+no durable y no autenticado. La repetición con el mismo handle y coordinador
+devuelve el mismo receipt. Si el primer `terminate` llega después de almacenado
+el resultado, el coordinador genera y guarda atómicamente el receipt en el
+handle, devuelve `TerminationAccepted` y no contacta al supervisor; es un no-op
+que no reclasifica el estado. Reiniciar el coordinador invalida sus handles. Un
+handle forjado,
+cruzado o de otra instancia produce `TerminationRejected(capability_rejected)`.
 
 No se exponen `before_action`/`after_action` como semántica principal; un
 adaptador que los necesite traduce a `PolicyPort.evaluate` y al flujo de
@@ -444,6 +473,7 @@ AdmissionOutcome  = Admitted | AdmissionRejected { reason_code, safe_detail, ret
 StartOutcome      = Started { handle } | StartFailed { reason_code }
 TerminationOutcome = TerminationAccepted { receipt } | TerminationRejected { reason_code }
 ExecutionResult   (sólo post-inicio) = executed | deadline_exceeded | terminated | supervision_failed
+AwaitedExecution  (sólo local) = { result: ExecutionResult, stdout: bytes, stderr: bytes }
 ```
 
 Vocabulario cerrado y versionado: los rechazos de admisión (descriptor mal
@@ -501,6 +531,12 @@ Clases de garantía (propuesta §8, sin cambios): `enforced`, `reactive`,
 failure_mode, evidence_ref`. Reglas 1–5 de la propuesta §8 se mantienen,
 incluida: M0–M3 no usan CPU/RSS para producir `budget_exceeded`.
 
+Enmienda ADR-012: el `GuaranteePlan` de admisión declara configuración,
+fórmula y topología conocidas entonces; `guarantees_applied` declara valores
+efectivos observados durante la ejecución. El plan no se muta ni anticipa
+`deadline_eff_ms`. Las entradas ASCII ordenadas de `assumptions` para ambos
+objetos y las claves locales de `measurements` son las de ADR-012 §2.3.
+
 Contrato del puerto (propuesta §9.1 adoptado tal cual):
 `PolicyPort.evaluate(PolicyEvaluationRequest) -> PolicyDecision` con
 `Allow`/`Deny`/`Indeterminate`; `Indeterminate` se trata como rechazo
@@ -523,6 +559,12 @@ declarado**: la admisión prosigue y emite el evento `policy_degraded`,
 obligatorio si `audit_mode=required` — la degradación nunca es silenciosa
 (I1). Los contract tests corren contra el puerto nulo y uno falso: el
 núcleo se prueba completo sin CAGF.
+
+Frontera por hito (ADR-012): mientras sólo M2 esté implementado, el servicio
+acepta exclusivamente `audit_mode=optional`; configurar `required` impide
+inicializar antes de solicitudes. Esto no satisface ni elimina los eventos de
+C5/C7: permanecen pendientes de M3. Cuando M3 exista, `required` conserva el
+orden de ADR-007/011.
 
 **Frontera CAGF:** las conversiones prohibidas de la propuesta §9.2 son
 norma (una capacidad local no es conformidad A9; un log local no es
@@ -586,7 +628,7 @@ la brecha de auditoría es explícita y nunca se rellena retrospectivamente.
    recibo autenticado (MAC con clave separada y dominio propio) es
    propuesta v2.
 
-## 12. Mecánica de supervisión (ADR-009, absorbe R3)
+## 12. Mecánica de supervisión (ADR-009, enmendada por ADR-012)
 
 1. **Salida acotada por bucle de lectura con drenado, no por rlimit:** al
    alcanzar `output_limits` el supervisor **sigue leyendo y descarta**
@@ -596,27 +638,45 @@ la brecha de auditoría es explícita y nunca se rellena retrospectivamente.
    bytes descartados, y el límite no mata al proceso. `RLIMIT_FSIZE` queda
    descartado como mecanismo primario (no caracterizado; actúa sobre
    archivos, no pipes).
-2. **Sin hang post-kill:** tras `SIGKILL` al grupo, la espera de EOF tiene
-   plazo propio; al expirar, el supervisor cierra los pipes y declara el
-   cierre forzado en el resultado. Ningún descendiente con descriptores
-   heredados puede colgar al supervisor.
-3. **Terminación graduada:** `SIGTERM` al grupo, gracia fija de despliegue
-   (propuesta inicial: 2 s), después `SIGKILL` al grupo. La gracia está
-   presupuestada dentro del deadline efectivo: la secuencia de terminación
-   inicia antes del vencimiento, **y el descuento es visible en el
-   contrato** (B6): `GuaranteePlan` y resultado declaran la gracia aplicada
-   y el tiempo útil resultante; gracia 0 (SIGKILL directo) es válida y
-   declarada.
-4. **Grupo de procesos como unidad de terminación** (`setpgid`); el escape
-   por `setsid`/double-fork es declarado, no perseguido (§13, fuera del
-   modelo).
-5. **Subreaper opcional en Linux:** el supervisor se declara
-   `PR_SET_CHILD_SUBREAPER` cuando el despliegue requiera contabilidad
-   multi-nivel; se declara en el `GuaranteePlan` con su clase real
-   (`observed`/`reactive`), nunca `enforced`. En Darwin la contabilidad
-   CPU multi-nivel es `unsupported`, sin mitigación conocida (E2).
-6. **Contabilidad de CPU: clase `observed`:** alimenta el resultado y
-   ninguna decisión de control en v1.
+2. **Portador y framing local:** `await_result` devuelve `AwaitedExecution`.
+   El supervisor de acción envía frames ordenados de máximo 65 536 bytes por
+   stream, con máximo uno no confirmado por stream. La cota estable es
+   `max_stdout_bytes + max_stderr_bytes + 2 * 65536`; el pico de
+   materialización es
+   `2 * (max_stdout_bytes + max_stderr_bytes) + 2 * 65536`, más overhead
+   caracterizado pero sin cota exacta de RSS. El wire v1 no cambia.
+3. **Sin hang post-kill:** `post_kill_drain_ms` es entero exacto, default
+   1000 y rango 1..10000. Tras `SIGKILL`, acota sólo la entrega de pipes, no
+   el deadline. Al expirar se cierran y
+   `post_kill_forced_pipe_close=1`; ningún descendiente con descriptores
+   heredados puede colgar el resultado.
+4. **Terminación graduada:** `termination_grace_ms` es entero exacto, default
+   2000 y rango 0..60000; 0 implica KILL directo. Se calculan
+   `applied_grace_ms`, `useful_runtime_ms`, `soft_termination_at` y
+   `hard_deadline_at` conforme a ADR-012 §2.3. El plan declara configuración
+   y fórmula; el resultado declara los valores aplicados. Deadline efectivo
+   cero rechaza `start` como `capability_rejected` antes del CAS.
+5. **Topología:** un coordinador runtime crea un proceso supervisor dedicado
+   por acción. Éste queda fuera del grupo ejecutado y crea para la acción un
+   grupo propio sin `preexec_fn`. `max_concurrent_actions` es entero exacto,
+   default 1 y rango 1..64; se reserva antes de efectos irreversibles y falta
+   de slot produce `start_failed` sin consumir token.
+6. **Propiedad y capacidad:** el slot se libera al transferir resultado y
+   salida al handle. La memoria de handles terminados es del llamador y no
+   queda acotada globalmente por los slots. Con máximos wire, 1 acción permite
+   128 MiB + 128 KiB estables y pico de 256 MiB + 128 KiB; 64 permiten 8 GiB
+   + 8 MiB y pico de 16 GiB + 8 MiB, más overhead.
+7. **Grupo y subreaper:** `setsid`/double-fork permanece escape. Sólo el
+   supervisor dedicado puede activar `PR_SET_CHILD_SUBREAPER` en Linux; el
+   plan declara solicitud y el resultado uso real. Darwin multi-nivel es
+   `unsupported`.
+8. **Reloj y clasificación:** la vigencia restante pre-CAS se proyecta una
+   vez a monotónico y nunca se extiende con reloj de pared. En empate entre
+   vigencia y duración gana `deadline_validity_exhausted`. Un reloj final no
+   finito o regresivo produce, si es posible,
+   `supervision_failed/supervision_failure` sin tiempos fabricados.
+9. **Contabilidad de CPU: clase `observed`:** alimenta el resultado y ninguna
+   decisión de control en v1.
 
 ## 13. Seguridad y modelo de amenaza (ADR-001)
 
@@ -679,10 +739,12 @@ de dependencia requerida fail-closed; fuzzing sin aceptación ambigua.
 
 ### M2 — Supervisión
 
-Propuesta §13 M2 más la mecánica de §12: sin hangs en la suite acotada;
-precedencia deadline determinista; procesos observados recogidos; escapes
-conocidos producen limitaciones declaradas, no tests falsamente verdes;
-Linux y macOS se prueban por separado.
+Propuesta §13 M2 más ADR-011/012 y los gates G-M2-01..15: revalidación pura,
+CAS y reconciliación, supervisor dedicado, framing/backpressure, memoria y
+capacidad publicadas, tiempos/terminación deterministas, procesos observados
+recogidos y escapes declarados. Linux y macOS se prueban por separado.
+`audit_mode=optional` es el único perfil M2; C5/C7 y `audit_trail` permanecen
+pendientes de M3.
 
 ### M3 — Evidencia
 
@@ -736,8 +798,8 @@ Criterio de adopción (propuesta §21) a la fecha de esta v1.2:
    (`enmienda-transversal-b1-b8-2026-08-19.md`).
 4. Tabla de claims/no-claims — **cumplida y enmendada con acta**
    (consensuada 2026-08-19; C2, C8, N8, N14, N16 corregidos por B1–B7).
-5. ADR con responsable — **cumplido** (ADR-001 a ADR-011 aceptados; ADR-010
-   y ADR-011 por actas propias, y toda enmienda posterior con acta, conforme a
+5. ADR con responsable — **cumplido** (ADR-001 a ADR-012 aceptados; ADR-010,
+   ADR-011 y ADR-012 por actas propias, y toda enmienda posterior con acta, conforme a
    la regla nacida del defecto de gobernanza reconocido en
    `enmienda-adr-007-durabilidad-2026-08-19.md`).
 6. Autorización separada de M0 y de cada hito — **cumplido para M0**

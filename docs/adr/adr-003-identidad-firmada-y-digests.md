@@ -77,12 +77,16 @@ gestión de claves y confianza.
    proceso). Un crash después del CAS y antes del spawn deja el token
    gastado y produce `start_failed_indeterminate` (ADR-004 punto 4, ADR-005)
    — nunca habilita replay.
-8. **`ExecutionHandle` y token de terminación (B2, C5):** `start` exitoso
+8. **`ExecutionHandle` y token de terminación (B2, C5; terminología enmendada
+   por ADR-012):** `start` exitoso
    emite un handle opaco que porta un token de terminación (MAC con dominio
    `ektel/termination/v1` sobre `action_id || identity_digest`). El handle
-   es **local al proceso supervisor, no serializable, confidencial**
+   es **local al coordinador runtime dueño de handles, no serializable,
+   confidencial**
    (redactado en logs y eventos) e **inválido tras reiniciar el
-   supervisor**: no es una capacidad bearer persistible.
+   coordinador**: no es una capacidad bearer persistible. El supervisor
+   dedicado de una acción es otro proceso y no redefine la identidad del
+   handle.
 9. **Gestión de claves:** la clave raíz vive en un archivo del operador con
    permisos `0600`, fuera del descriptor y de los eventos. Rotación =
    reemisión de capacidades; no hay jerarquía ni delegación (D2). Los
