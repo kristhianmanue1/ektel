@@ -1,0 +1,4 @@
+# M1-R2 overlay funcional sobre 9cb731ba707544e20f6af3fa84ae8b0166b1b58e
+# Excluye manifest, evidencia y acta para evitar autorreferencia documental.
+fb73055533833f90ac9bc6886d6c45aeb5d49aea83a2f293c8462670e1648170  src/application/admit.py
+793241eb021578ee11bf8c023ac3c8a28d2bb91bf3173afc305fde002e3c188e  tests/unit/test_admit_pipeline.py

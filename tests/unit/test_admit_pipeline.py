@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "contracts" / "parsers" / "clean-room"))
 
 from helpers_m1 import (  # noqa: E402
     EXP, NOW, MemoryReplayStore, ScriptedPolicy, SpawnSpy, TEST_KEY,
@@ -19,6 +20,7 @@ from src.domain.outcomes import Admitted, AdmissionRejected  # noqa: E402
 from src.ports.policy_port import Allow, Deny, Indeterminate  # noqa: E402
 from src.ports.replay_store import ReserveOutcome  # noqa: E402
 from src.domain import contract_layer  # noqa: E402
+import ektel_cleanroom_parser as cleanroom_parser  # noqa: E402
 
 
 def _b64d(s: str) -> bytes:
@@ -65,6 +67,36 @@ class AdmitPipelineTests(unittest.TestCase):
         self.assertEqual([e["magnitude"] for e in out.guarantee_plan],
                          ["runtime_supervision", "output_bounds"])
         self.assertTrue(all(e["class"] == "unsupported" for e in out.guarantee_plan))
+
+    def test_guarantee_plan_emitido_conforma_al_wire_v1(self):
+        """La proyección wire del resultado real debe pasar ambos parsers M0.
+
+        M1 conserva campos locales adicionales en ``Admitted``; el documento
+        wire cerrado sólo transporta la alternativa normativa v1.
+        """
+        out = make_service().admit(valid_request_bytes())
+        self.assertIsInstance(out, Admitted)
+        assert isinstance(out, Admitted)
+        wire = contract_layer.emit_canonical({
+            "schema_version": 1,
+            "outcome": "admitted",
+            "admitted_action": out.admitted_action,
+            "identity_digest": out.identity_digest,
+            "guarantee_plan": list(out.guarantee_plan),
+        })
+
+        for label, parser in (
+            ("reference", contract_layer._REF),
+            ("clean-room", cleanroom_parser),
+        ):
+            with self.subTest(parser=label):
+                result = parser.parse_wire("admission-outcome", wire, b"")
+                self.assertEqual((result.verdict, result.diagnostic),
+                                 ("accept", "ok"))
+
+        self.assertTrue(all(e["failure_mode"] ==
+                            "guarantee_not_enforced_in_m1"
+                            for e in out.guarantee_plan))
 
     def test_frontera_spawn_solo_admitted_cruza(self):
         # D-P4-α: el spy sólo acepta Admitted; el servicio no expone start.

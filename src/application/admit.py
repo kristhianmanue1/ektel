@@ -376,7 +376,7 @@ def _guarantee_plan(requested: object) -> tuple[dict[str, object], ...]:
                     "mechanism": f"mecanismo del hito { _MILESTONE.get(magnitude, 'M?') } (no operado en M1)",
                     "assumptions": [],
                     "known_escapes": [],
-                    "failure_mode": "",
+                    "failure_mode": "guarantee_not_enforced_in_m1",
                     "evidence_ref": "M1: pendiente de promoción por evidencia (spec §9)",
                 })
     return tuple(plan)
