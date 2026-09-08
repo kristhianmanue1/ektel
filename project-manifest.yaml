@@ -1,0 +1,51 @@
+schema: pinax/project-manifest/v1
+id: ektel
+proposito: >
+  Runtime que separa del proceso ejecutado la admisión autorizada, la
+  ejecución restringida y la resolución observada, declarando la fuerza real
+  y la plataforma de cada garantía en lugar de asumir que todas son límites
+  duros.
+consumidor_principal: agente
+
+ofrece:
+  - admisión autorizada con descriptor y capacidad expirable validados antes de iniciar (M1 cerrado, 130 tests, mypy --strict, fuzz de admisión con oráculo)
+  - wire schemas v1 con 91 vectores dorados y dos parsers de referencia (M0 cerrado contractualmente, doble PROCEED externo)
+  - caracterización de plataforma medida en Darwin arm64 y Linux aarch64, imagen fijada por digest
+  - especificación M0–M3 v1.2 en consenso como fuente normativa del ciclo
+
+no_ofrece:
+  - inicio de ejecuciones implementado (M2 sin autorizar; el wire schema start-outcome existe pero no hay capa que lo produzca, la capa viva hoy es application/admit.py)
+  - brazo de terminación implementado (M3 sin autorizar)
+  - límites de memoria o CPU duros en macOS (RLIMIT_AS y RLIMIT_CPU refutados por medición; CPU/RSS por muestreo es observación best-effort con fallos silenciosos posibles)
+  - scheduler de tiempo real, muerte de procesos escapados ni reparación externa
+  - gobernanza del alcance efectivo o del éxito del negocio (la capacidad declara qué identidad de ejecución puede admitirse, nada más)
+  - releases o versiones alfa antes del cierre de M3 (decisión del dueño, 2026-08-22)
+
+publica:
+  - { tipo: contrato, id: ektel/envelope, version: v1 }
+  - { tipo: contrato, id: ektel/protected-header, version: v1 }
+  - { tipo: contrato, id: ektel/capability-payload, version: v1 }
+  - { tipo: contrato, id: ektel/admission-token-payload, version: v1 }
+  - { tipo: contrato, id: ektel/admission-outcome, version: v1 }
+  - { tipo: contrato, id: ektel/action-request, version: v1 }
+  - { tipo: contrato, id: ektel/invocation-proof, version: v1 }
+  - { tipo: contrato, id: ektel/execution-result, version: v1 }
+  - { tipo: contrato, id: ektel/start-outcome, version: v1 }
+  - { tipo: contrato, id: ektel/termination-outcome, version: v1 }
+  - { tipo: contrato, id: ektel/termination-token-payload, version: v1 }
+
+consume:
+  - { tipo: contrato, id: epistates/task-card/v1, uso: "entrada estándar de ejecución", requerido: true }
+  - { tipo: proyecto, id: propylon, uso: "canal de interrupción (A0) futuro; hoy el canal es manual", requerido: false }
+
+fronteras_de_confianza:
+  - cada garantía declara su fuerza y su plataforma; una medición reactiva no se presenta como límite duro
+  - tokens y costo sólo son gobernables para llamadas que atraviesan una frontera mediada
+  - el canal de interrupción (A0) es manual hoy, la terminal de quien opera
+  - los wire schemas publicados son experimentales (spec v1.2 §16), sin compromiso de estabilidad
+  - M2 y M3 son diseño especificado, no producto; nada de ello debe tratarse como capacidad ejecutable hoy
+
+pospuesto:
+  - caracterización en x86_64 real (puerta de pre-producción, ADR-006/N12)
+  - ampliación de la suite de caracterización (durabilidad bajo fallo y RSS por muestreo)
+  - versión alfa o cualquier release hasta el cierre de M3
