@@ -35,6 +35,7 @@ API EXPERIMENTAL (spec §16). stdlib-only.
 """
 from __future__ import annotations
 
+import math
 import secrets
 import threading
 import time
@@ -130,6 +131,9 @@ class StartService:
         self._instance = secrets.token_hex(8)
         self._handles: dict[str, ExecutionHandle] = {}
         self._handles_lock = threading.Lock()
+        # Slots retenidos por indeterminación, con su identidad, para que la
+        # capacidad perdida sea observable y recuperable por acto explícito.
+        self._retained: list[str] = []
 
     @property
     def coordinator_instance(self) -> str:
@@ -138,6 +142,30 @@ class StartService:
     @property
     def slots_in_use(self) -> int:
         return self._slots.in_use
+
+    @property
+    def retained_by_indeterminacy(self) -> tuple[str, ...]:
+        """Identidades cuyo slot quedó retenido por un inicio indeterminado.
+
+        Sin esto la capacidad decrecería de forma monótona y silenciosa.
+        """
+        with self._handles_lock:
+            return tuple(self._retained)
+
+    def release_indeterminate(self, identity_digest: str) -> bool:
+        """Libera un slot retenido por indeterminación.
+
+        **Acto explícito del operador**, nunca automático: quien lo invoca
+        afirma haber comprobado que no sobrevive ningún proceso de esa acción.
+        ektel no puede comprobarlo por sí mismo —ésa es precisamente la
+        indeterminación— y no finge lo contrario.
+        """
+        with self._handles_lock:
+            if identity_digest not in self._retained:
+                return False
+            self._retained.remove(identity_digest)
+        self._slots.release()
+        return True
 
     def start(self, request: object) -> StartOutcome:
         """Ejecuta la linealización de ADR-011 §2.6."""
@@ -212,6 +240,10 @@ class StartService:
         except Exception:
             return _failed(REASON_START_FAILED_INDETERMINATE,
                            f"{origin}:status_unavailable")
+        if type(status) is not str:
+            # Un valor de otro tipo no adquiere autoridad por comparación.
+            return _failed(REASON_START_FAILED_INDETERMINATE,
+                           f"{origin}:status_type")
         if status == "unspent":
             return _failed(REASON_START_FAILED, f"{origin}:unspent")
         if status == "spent":
@@ -229,6 +261,10 @@ class StartService:
         except Exception:
             # No se puede afirmar que no exista un proceso: indeterminado.
             # El slot NO se libera: podría haber un proceso vivo asociado.
+            # Se **registra** para que exista ruta de recuperación explícita
+            # (H5); liberarlo automáticamente destruiría la razón de retenerlo.
+            with self._handles_lock:
+                self._retained.append(plan.identity_digest)
             return _failed(REASON_START_FAILED_INDETERMINATE, "spawn:indeterminate")
         if type(handle_ref) is not str or len(handle_ref) != 16:
             self._slots.release()
@@ -271,9 +307,9 @@ class StartService:
         # Repetición con el mismo objeto: mismo receipt, sin segundo efecto.
         if handle.already_terminated():
             return handle.linearized_receipt()
-        # Post-resultado: se linealiza en el handle, NO se contacta al
-        # supervisor y NO se reclasifica el resultado (D-M2-4).
-        if handle.has_terminal_result:
+        # Post-resultado o handle ya liberado: se linealiza en el handle, NO
+        # se contacta al supervisor y NO se reclasifica el resultado (D-M2-4).
+        if handle.has_terminal_result or handle.released:
             return handle.linearized_receipt()
         accepted = handle.linearized_receipt()
         try:
@@ -308,4 +344,6 @@ class StartService:
             value = self._wall_clock()
         except Exception:
             return None
-        return value if type(value) is float and value == value else None
+        if type(value) is not float or not math.isfinite(value):
+            return None
+        return value

@@ -173,5 +173,37 @@ class CrashYSpawnTests(unittest.TestCase):
         self.assertEqual(out.reason_code, REASON_START_FAILED_INDETERMINATE)
 
 
+
+class RegresionRelojYEstadoTests(unittest.TestCase):
+    """H8 y H10 de la ronda adversarial."""
+
+    def test_h8_reloj_infinito_no_pasa_como_valido(self) -> None:
+        for now in (float("inf"), float("-inf"), float("nan")):
+            with self.subTest(now=now):
+                svc = make_start_service(now=now)
+                out = svc.start(valid_start_request())
+                assert isinstance(out, StartFailed)
+                self.assertEqual(out.reason_code, REASON_START_FAILED)
+                self.assertEqual(out.safe_detail, "clock:unavailable")
+
+    def test_h10_status_de_otro_tipo_no_adquiere_autoridad(self) -> None:
+        """Antes se comparaba con `==`; un objeto con `__eq__` a medida podia
+        hacerse pasar por 'unspent' y degradar un indeterminado."""
+        class Mentiroso:
+            def __eq__(self, other: object) -> bool:
+                return True
+
+        host = FakeProcessHost()
+        svc = make_start_service(
+            store=HostileStore(consume=ConsumeOutcome.UNAVAILABLE,
+                               status=Mentiroso()),
+            host=host)
+        out = svc.start(valid_start_request())
+        assert isinstance(out, StartFailed)
+        self.assertEqual(out.reason_code, REASON_START_FAILED_INDETERMINATE)
+        self.assertEqual(out.safe_detail, "cas:unavailable:status_type")
+        self.assertEqual(host.spawns, [])
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

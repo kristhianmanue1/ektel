@@ -39,9 +39,11 @@ from __future__ import annotations
 import base64
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -51,6 +53,13 @@ from . import platform_caps
 
 #: Cota de frame de D-M2-1(a): 64 KiB por stream.
 FRAME_MAX_BYTES = 65536
+#: Espera máxima de crédito antes de degradar a descarte (H1). D-M2-1(a):
+#: si el coordinador deja de consumir, el supervisor **sigue drenando** al
+#: hijo y descarta el exceso; nunca se bloquea dejando de leer.
+CREDIT_TIMEOUT_S = 2.0
+#: Cota de espera de EOF tras la salida del proceso principal (H2). Un nieto
+#: que retiene los pipes no puede producir una espera ilimitada.
+EOF_DRAIN_TIMEOUT_S = 3.0
 #: El descriptor del plan **se comunica por argv**, no se asume fijo:
 #: `pass_fds` conserva el número original que devuelva `os.pipe()`, y ese
 #: número depende de cuántos descriptores tenga abiertos el coordinador.
@@ -108,22 +117,34 @@ class _StreamPump:
         self.retained = 0
         self.discarded = 0
         self.truncated = False
+        #: El coordinador dejó de confirmar y se pasó a descarte (H1).
+        self.credit_starved = False
 
     def run(self) -> None:
         while True:
-            chunk = self._source.read(FRAME_MAX_BYTES)  # type: ignore[attr-defined]
+            try:
+                # `read1` devuelve lo disponible; `read` bloquearía hasta
+                # reunir el tamaño pedido o EOF, y entonces no habría drenaje
+                # incremental (H4).
+                chunk = self._source.read1(FRAME_MAX_BYTES)  # type: ignore[attr-defined]
+            except (OSError, ValueError):
+                # El pipe se cerró desde fuera para acotar la espera (H2).
+                return
             if not chunk:
                 return
             room = self._limit - self.retained
-            if room > 0:
+            rest = chunk
+            if room > 0 and not self.credit_starved:
                 keep, rest = chunk[:room], chunk[room:]
                 if keep:
-                    # Crédito: como máximo un frame no confirmado por stream.
-                    self._credit.acquire()
-                    self._emit(self.stream, keep)  # type: ignore[operator]
-                    self.retained += len(keep)
-            else:
-                rest = chunk
+                    # Máximo un frame no confirmado por stream. Si el crédito
+                    # no llega, NO se deja de leer: se degrada a descarte.
+                    if self._credit.acquire(timeout=CREDIT_TIMEOUT_S):
+                        self._emit(self.stream, keep)  # type: ignore[operator]
+                        self.retained += len(keep)
+                    else:
+                        self.credit_starved = True
+                        rest = chunk
             if rest:
                 # Sigue drenando aunque ya no retenga: no dejar al hijo
                 # bloqueado escribiendo en un pipe lleno.
@@ -147,8 +168,25 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
     write_lock = threading.Lock()
     credits = {_STREAM_OUT: threading.Semaphore(1),
                _STREAM_ERR: threading.Semaphore(1)}
+    # H11: la propiedad "un solo frame no confirmado por stream" se **mide**,
+    # no se afirma. Aquí es donde puede observarse.
+    outstanding = {_STREAM_OUT: 0, _STREAM_ERR: 0}
+    unacked_peak = {_STREAM_OUT: 0, _STREAM_ERR: 0}
+    counters_lock = threading.Lock()
+    # EOF del canal del coordinador = solicitud de terminación del grupo.
+    channel_closed = threading.Event()
 
     def emit(stream: bytes, payload: bytes) -> None:
+        # El contador se incrementa ANTES de escribir. Al revés, el ack de ese
+        # frame puede llegar antes del incremento, descartarse por
+        # `outstanding == 0` y dejar un pendiente fantasma que infla el pico.
+        # Lo que acota la propiedad es el semáforo —se adquiere antes de emitir
+        # y sólo se libera con el ack—; este contador únicamente la observa, y
+        # debe observarla sin adelantarse al hecho que mide.
+        with counters_lock:
+            outstanding[stream] += 1
+            if outstanding[stream] > unacked_peak[stream]:
+                unacked_peak[stream] = outstanding[stream]
         with write_lock:
             _write_frame(frames_out, b"F", stream, payload)
 
@@ -156,9 +194,13 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         while True:
             token = acks_in.read(1)
             if not token:
+                channel_closed.set()
                 return
             credit = credits.get(token)
             if credit is not None:
+                with counters_lock:
+                    if outstanding[token] > 0:
+                        outstanding[token] -= 1
                 credit.release()
 
     threading.Thread(target=ack_reader, daemon=True).start()
@@ -201,6 +243,25 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
     # supervisor (G-M2-08).
     threading.Thread(target=feed_stdin, daemon=True).start()
 
+    def terminate_group() -> None:
+        """Terminación **best-effort del grupo** del proceso ejecutado.
+
+        D-M2-2(a): el EOF del canal del coordinador la solicita. Matar al
+        supervisor en su lugar dejaría al hijo huérfano y vivo, que es lo
+        contrario de lo pedido. No promete muerte universal ni alcanza a
+        descendientes escapados por `setsid`.
+        """
+        try:
+            os.killpg(os.getpgid(child.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            pass
+
+    def on_channel_close() -> None:
+        channel_closed.wait()
+        terminate_group()
+
+    threading.Thread(target=on_channel_close, daemon=True).start()
+
     assert child.stdout is not None and child.stderr is not None
     pump_out = _StreamPump(_STREAM_OUT, child.stdout,
                            int(plan["max_stdout_bytes"]), emit,
@@ -208,13 +269,36 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
     pump_err = _StreamPump(_STREAM_ERR, child.stderr,
                            int(plan["max_stderr_bytes"]), emit,
                            credits[_STREAM_ERR])
-    hilos = [threading.Thread(target=p.run) for p in (pump_out, pump_err)]
+    # Daemon: si un nieto retiene los pipes, el hilo puede quedar dentro de
+    # `read1` y cerrar el descriptor NO lo desbloquea. No se depende de
+    # desbloquearlo: el supervisor emite su terminal y sale igualmente.
+    hilos = [threading.Thread(target=p.run, daemon=True)
+             for p in (pump_out, pump_err)]
     for h in hilos:
         h.start()
-    for h in hilos:
-        h.join()
 
+    # Esperar al proceso principal: los pumps drenan, así que `wait` no puede
+    # bloquearse contra un pipe lleno.
     returncode = child.wait()
+
+    # Cota de EOF (H2). Un nieto que hereda y RETIENE los pipes impide el EOF
+    # aunque el principal ya salió; sin esta cota la espera es ilimitada.
+    forced_pipe_close = False
+    deadline = time.monotonic() + EOF_DRAIN_TIMEOUT_S
+    for h in hilos:
+        h.join(timeout=max(0.0, deadline - time.monotonic()))
+    if any(h.is_alive() for h in hilos):
+        # No hay EOF porque alguien más retiene el extremo de escritura. Se
+        # declara el cierre forzado y se continúa: los contadores publicados
+        # son los observados hasta este instante, no un total que el supervisor
+        # no puede conocer.
+        #
+        # NO se llama `pipe.close()`: cerrar un `BufferedReader` espera el lock
+        # que retiene el hilo bloqueado dentro de `read1`, y eso bloquea al
+        # supervisor exactamente igual que el problema que se quiere acotar.
+        # Los pumps son daemon y los descriptores se cierran al salir el
+        # proceso, que es inmediato tras emitir el terminal.
+        forced_pipe_close = True
     terminal = {
         "returncode": returncode,
         "stdout_retained": pump_out.retained,
@@ -227,6 +311,12 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         "subreaper_requested": bool(plan.get("subreaper_requested")),
         "subreaper_applied": subreaper_applied,
         "child_pid": child.pid,
+        # H11: medido, no afirmado.
+        "max_unacked_stdout": unacked_peak[_STREAM_OUT],
+        "max_unacked_stderr": unacked_peak[_STREAM_ERR],
+        "credit_starved": pump_out.credit_starved or pump_err.credit_starved,
+        # H2: se declara cuando hubo que cerrar los pipes para acotar la espera.
+        "forced_pipe_close": forced_pipe_close,
     }
     with write_lock:
         _write_frame(frames_out, b"T", b"-",
@@ -247,9 +337,9 @@ class SupervisedAction:
     stderr: bytearray = field(default_factory=bytearray)
     terminal: Optional[dict[str, object]] = None
     failed_detail: Optional[str] = None
+    termination_requested: bool = False
     done: threading.Event = field(default_factory=threading.Event)
     max_frame_seen: int = 0
-    unacked_peak: int = 0
 
 
 class PosixSupervisorHost:
@@ -297,8 +387,17 @@ class PosixSupervisorHost:
             os.close(plan_w)
             raise SpawnRejected(f"supervisor_spawn:{exc.errno}") from exc
         os.close(plan_r)
-        with os.fdopen(plan_w, "wb") as sink:
-            sink.write(payload)
+        try:
+            with os.fdopen(plan_w, "wb") as sink:
+                sink.write(payload)
+        except OSError as exc:
+            # Fallo determinado y anterior al proceso ejecutado: no debe
+            # degradarse a indeterminado (H9).
+            try:
+                supervisor.kill()
+            except Exception:
+                pass
+            raise SpawnRejected(f"plan_channel:{exc.errno}") from exc
 
         handle_ref = f"{os.urandom(8).hex()}"
         action = SupervisedAction(handle_ref=handle_ref, process=supervisor)
@@ -322,9 +421,14 @@ class PosixSupervisorHost:
                     target = (action.stdout if stream == _STREAM_OUT
                               else action.stderr)
                     target.extend(payload)
-                    # Confirmación: devuelve el crédito de ese stream.
-                    sink.write(stream)
-                    sink.flush()
+                    # Confirmación: devuelve el crédito de ese stream. Si el
+                    # canal ya se cerró para pedir terminación, no reabrirlo.
+                    if not action.termination_requested:
+                        try:
+                            sink.write(stream)
+                            sink.flush()
+                        except (BrokenPipeError, ValueError):
+                            pass
                 elif kind == b"T":
                     action.terminal = json.loads(payload.decode("utf-8"))
                     break
@@ -337,7 +441,7 @@ class PosixSupervisorHost:
         finally:
             # Cerrar ambos extremos: filtrar descriptores por acción agotaría
             # el coordinador tras suficientes acciones.
-            for pipe in (action.process.stdin, action.process.stdout):
+            for pipe in (action.process.stdin, action.process.stdout):  # noqa: E501
                 try:
                     if pipe is not None:
                         pipe.close()
@@ -350,13 +454,24 @@ class PosixSupervisorHost:
             action.done.set()
 
     def request_termination(self, handle_ref: str) -> None:
-        """Best-effort. La terminación graduada TERM→KILL es de INC-M2-4."""
+        """Solicita terminación best-effort **del grupo** del proceso ejecutado.
+
+        Se hace **cerrando el canal** hacia el supervisor (D-M2-2(a): «el EOF
+        del canal del coordinador solicita terminación best-effort del
+        grupo»). Terminar al supervisor en su lugar dejaría al hijo huérfano y
+        vivo: lo contrario de lo solicitado.
+
+        La terminación graduada TERM→KILL es de INC-M2-4; esto es la señal, no
+        una promesa de muerte.
+        """
         with self._lock:
             action = self._actions.get(handle_ref)
         if action is None:
             return
+        action.termination_requested = True
         try:
-            action.process.terminate()
+            if action.process.stdin is not None:
+                action.process.stdin.close()
         except Exception:
             pass
 
@@ -369,7 +484,17 @@ class PosixSupervisorHost:
             return None
         if not action.done.wait(timeout):
             return None
+        # H6: el registro no crece sin límite. Entregar el terminal transfiere
+        # la propiedad al llamador y el coordinador deja de retenerlo.
+        with self._lock:
+            self._actions.pop(handle_ref, None)
         return action
+
+    @property
+    def pending_actions(self) -> int:
+        """Acciones retenidas por el coordinador y todavía no entregadas."""
+        with self._lock:
+            return len(self._actions)
 
 
 def _repo_root() -> "object":

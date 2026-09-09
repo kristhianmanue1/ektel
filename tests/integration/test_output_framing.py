@@ -158,5 +158,109 @@ class SalidaDelProcesoTests(SupervisorCase):
         self.assertLess(a.terminal["returncode"], 0)  # type: ignore[index,operator]
 
 
+
+class RegresionRondaAdversarialTests(unittest.TestCase):
+    """Regresiones de la ronda adversarial 2026-09-09 (H1..H4, H11).
+
+    Cada prueba de esta clase falla contra el código anterior a la corrección.
+    """
+
+    def test_h1_coordinador_que_no_confirma_no_bloquea_el_drenaje(self) -> None:
+        """D-M2-1(a): si el coordinador deja de consumir, el supervisor SIGUE
+        drenando y descarta. Antes se bloqueaba en `credit.acquire()`."""
+        import src.adapters.posix_supervisor as mod
+
+        class SordoHost(mod.PosixSupervisorHost):
+            def _collect(self, action: object) -> None:  # type: ignore[override]
+                source = action.process.stdout  # type: ignore[attr-defined]
+                try:
+                    while True:
+                        frame = mod._read_frame(source)
+                        if frame is None:
+                            break
+                        kind, _, payload = frame
+                        if kind == b"T":
+                            action.terminal = __import__("json").loads(  # type: ignore[attr-defined]
+                                payload.decode("utf-8"))
+                            break
+                finally:
+                    action.done.set()  # type: ignore[attr-defined]
+
+        script = ("import sys\n"
+                  "for _ in range(32): sys.stdout.write('x'*65536)\n")
+        host = SordoHost()
+        ref = host.spawn(plan(script, max_out=1024 * 1024), deadline_eff_ms=60000)
+        action = host.await_terminal(ref, timeout=45)
+        self.assertIsNotNone(action, "el supervisor no debe quedar bloqueado")
+        assert action is not None
+        t = action.terminal
+        assert t is not None
+        self.assertTrue(t["credit_starved"],
+                        "debe declarar que degrado a descarte")
+        self.assertEqual(t["returncode"], 0, "el hijo debe poder terminar")
+        self.assertGreater(t["stdout_discarded_bytes"], 0)
+
+    def test_h2_nieto_que_retiene_pipes_no_cuelga(self) -> None:
+        """G-M2-08: toda espera acotada. Antes no llegaba terminal jamas."""
+        script = ("import subprocess,sys\n"
+                  "subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'])\n"
+                  "sys.stdout.write('padre-sale')\n")
+        host = PosixSupervisorHost()
+        ref = host.spawn(plan(script), deadline_eff_ms=60000)
+        action = host.await_terminal(ref, timeout=30)
+        self.assertIsNotNone(action, "debe entregar terminal pese al nieto")
+        assert action is not None
+        t = action.terminal
+        assert t is not None
+        self.assertTrue(t["forced_pipe_close"],
+                        "debe declarar el cierre forzado de pipes")
+        self.assertEqual(t["returncode"], 0)
+
+    def test_h4_entrega_incremental_antes_de_que_el_hijo_salga(self) -> None:
+        """`read1`, no `read`: antes no llegaba nada hasta EOF."""
+        import time
+        script = ("import sys,time\n"
+                  "sys.stdout.write('temprano');sys.stdout.flush()\n"
+                  "time.sleep(4)\n")
+        host = PosixSupervisorHost()
+        t0 = time.monotonic()
+        ref = host.spawn(plan(script), deadline_eff_ms=60000)
+        accion = host._actions[ref]
+        while time.monotonic() - t0 < 3.0:
+            if bytes(accion.stdout):
+                break
+            time.sleep(0.05)
+        transcurrido = time.monotonic() - t0
+        self.assertEqual(bytes(accion.stdout), b"temprano")
+        self.assertLess(transcurrido, 3.0,
+                        "la salida debe llegar antes de que el hijo termine")
+        host.await_terminal(ref, timeout=30)
+
+    def test_h11_nunca_mas_de_un_frame_no_confirmado_por_stream(self) -> None:
+        """D-M2-1(a)/G-M2-07: la propiedad se MIDE, no se afirma."""
+        script = ("import sys\n"
+                  "for _ in range(16):\n"
+                  "    sys.stdout.write('o'*65536); sys.stderr.write('e'*65536)\n")
+        host = PosixSupervisorHost()
+        ref = host.spawn(plan(script, max_out=512 * 1024, max_err=512 * 1024),
+                         deadline_eff_ms=60000)
+        action = host.await_terminal(ref, timeout=45)
+        assert action is not None and action.terminal is not None
+        t = action.terminal
+        self.assertLessEqual(t["max_unacked_stdout"], 1)
+        self.assertLessEqual(t["max_unacked_stderr"], 1)
+        self.assertGreaterEqual(t["max_unacked_stdout"], 1,
+                                "la medicion debe haber observado trafico real")
+
+    def test_h6_el_registro_no_crece_sin_limite(self) -> None:
+        host = PosixSupervisorHost()
+        for _ in range(3):
+            ref = host.spawn(plan("import sys;sys.stdout.write('ok')"),
+                             deadline_eff_ms=60000)
+            self.assertIsNotNone(host.await_terminal(ref, timeout=30))
+        self.assertEqual(host.pending_actions, 0,
+                         "entregar el terminal debe soltar el registro")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

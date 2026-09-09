@@ -147,5 +147,34 @@ class CarreraDeSlotsTests(unittest.TestCase):
         self.assertLessEqual(svc.slots_in_use, capacidad)
 
 
+
+class RegresionSlotsTests(unittest.TestCase):
+    """H5 y H6 de la ronda adversarial."""
+
+    def test_h5_el_slot_retenido_por_indeterminacion_es_observable(self) -> None:
+        svc = make_start_service(host=FakeProcessHost(raise_unknown=True),
+                                 config=M2Config.build(max_concurrent_actions=1))
+        out = svc.start(_request(1))
+        assert isinstance(out, StartFailed)
+        self.assertEqual(out.safe_detail, "spawn:indeterminate")
+        self.assertEqual(svc.slots_in_use, 1)
+        # Antes la capacidad perdida era invisible y sin ruta de recuperacion.
+        retenidos = svc.retained_by_indeterminacy
+        self.assertEqual(len(retenidos), 1)
+
+    def test_h5_liberar_es_acto_explicito_y_recupera_capacidad(self) -> None:
+        svc = make_start_service(host=FakeProcessHost(raise_unknown=True),
+                                 config=M2Config.build(max_concurrent_actions=1))
+        svc.start(_request(1))
+        identidad = svc.retained_by_indeterminacy[0]
+        self.assertFalse(svc.release_indeterminate("no-existe"))
+        self.assertTrue(svc.release_indeterminate(identidad))
+        self.assertEqual(svc.slots_in_use, 0)
+        self.assertEqual(svc.retained_by_indeterminacy, ())
+        # Liberar dos veces no regala capacidad.
+        self.assertFalse(svc.release_indeterminate(identidad))
+        self.assertEqual(svc.slots_in_use, 0)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

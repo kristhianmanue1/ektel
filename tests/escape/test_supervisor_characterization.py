@@ -142,5 +142,45 @@ class EscapesDeclaradosTests(unittest.TestCase):
             self.skipTest("setsid no observable en este host; escape declarado")
 
 
+
+class RegresionH3TerminacionDelGrupoTests(unittest.TestCase):
+    """H3 de la ronda adversarial: `request_termination` debe terminar el
+    GRUPO del proceso ejecutado, no al supervisor. Antes lo dejaba huerfano."""
+
+    def test_request_termination_no_deja_al_hijo_huerfano(self) -> None:
+        import subprocess as sp
+        import time
+        script = "import time,sys\nsys.stdout.write('vivo');sys.stdout.flush()\ntime.sleep(60)\n"
+        host = PosixSupervisorHost()
+        ref = host.spawn(plan(script), deadline_eff_ms=60000)
+        # Esperar a que exista el proceso ejecutado.
+        accion = host._actions[ref]
+        hijos: list[str] = []
+        for _ in range(100):
+            hijos = sp.run(["pgrep", "-P", str(accion.process.pid)],
+                           capture_output=True, text=True).stdout.split()
+            if hijos:
+                break
+            time.sleep(0.05)
+        self.assertTrue(hijos, "no se observo el proceso ejecutado")
+        pid = int(hijos[0])
+
+        host.request_termination(ref)
+
+        def vivo(p: int) -> bool:
+            try:
+                os.kill(p, 0)
+                return True
+            except OSError:
+                return False
+
+        for _ in range(100):
+            if not vivo(pid):
+                break
+            time.sleep(0.05)
+        self.assertFalse(vivo(pid),
+                         "el proceso ejecutado quedo huerfano y vivo")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

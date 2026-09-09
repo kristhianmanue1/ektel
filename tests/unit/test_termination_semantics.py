@@ -161,5 +161,22 @@ class VocabularioTests(unittest.TestCase):
                           "no hay registro global de receipts ni de handles")
 
 
+
+class RegresionH7Tests(unittest.TestCase):
+    """H7: un handle ya liberado no vuelve a contactar al supervisor."""
+
+    def test_terminate_tras_await_result_no_contacta_al_supervisor(self) -> None:
+        host = FakeProcessHost()
+        svc = make_start_service(host=host)
+        handle = _started(svc)
+        handle.store_terminal_result({"outcome": "executed"})
+        svc.await_result(handle)
+        self.assertTrue(handle.released)
+        out = svc.terminate(handle)
+        self.assertIsInstance(out, TerminationAccepted)
+        self.assertEqual(host.terminations, [],
+                         "un handle liberado no puede reabrir efectos")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
