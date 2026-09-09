@@ -15,7 +15,7 @@
 
 | Gate | Resultado |
 |---|---|
-| Suite completa `tests/` | **314 OK, 4 skips** |
+| Suite completa `tests/` | **339 OK, 4 skips** |
 | `mypy --strict src` | limpio, 34 archivos |
 | Vectores dorados | 91 regenerados, **diff cero** |
 | `fuzz_admision.py` (M1) | sin divergencias; fingerprint bases `795c3a96…` |
@@ -37,6 +37,14 @@ Consecuencia medida y **no mitigada**: el CPU y la recolección de un nieto
 huérfano —cuyo padre inmediato murió sin `wait()`— son irrecuperables para el
 proceso raíz. **No hay mitigación conocida en Darwin.** Este hecho no se
 compensa ni se disimula: se declara.
+
+## RSS — caracterizado, nunca declarado como cota
+
+El RSS del supervisor se **observa** (vía `ps` en Darwin, `/proc` en Linux) y
+se comprueba que es finito y positivo. **No** se compara con las fórmulas de
+payload de D-M2-1(a), que acotan **payload retenido y no memoria del
+proceso**. Si la medición no puede obtenerse, la prueba se **salta
+declarándolo** en vez de darla por buena.
 
 ## Lo que esta corrida NO acredita
 

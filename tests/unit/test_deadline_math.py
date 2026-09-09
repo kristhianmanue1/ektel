@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.domain.deadline import (  # noqa: E402
+    PayloadBounds,
+    payload_bounds,
+    wall_sample_valid,
     ceil_exact_ms,
     compute_bounds,
     deadline_eff_ms,
@@ -24,6 +27,7 @@ from src.domain.execution_result import (  # noqa: E402
     CAUSE_EXTERNAL_TERMINATION,
     CAUSE_NATURAL_EXIT,
     CAUSE_SUPERVISION_FAILURE,
+    OUTCOME_SUPERVISION_FAILED,
     ExecutionResult,
     MEASUREMENT_KEYS,
     OUTCOME_DEADLINE_EXCEEDED,
@@ -176,6 +180,88 @@ class MedicionesTests(unittest.TestCase):
         m = freeze_measurements({})
         with self.assertRaises(TypeError):
             m["useful_runtime_ms"] = 1  # type: ignore[index]
+
+
+class MuestraDeParedTests(unittest.TestCase):
+    """G-M2-09: la muestra final de pared sólo alimenta `finished_at_wall`.
+
+    Si no es finita o REGRESA respecto de la inicial, se produce
+    `supervision_failed` y **no se fabrican tiempos**.
+    """
+
+    def test_muestra_normal_es_valida(self) -> None:
+        self.assertTrue(wall_sample_valid(100.0, 100.5))
+        self.assertTrue(wall_sample_valid(100.0, 100.0), "empate es valido")
+
+    def test_regresion_invalida(self) -> None:
+        self.assertFalse(wall_sample_valid(100.0, 99.999))
+        self.assertFalse(wall_sample_valid(100.0, 0.0))
+        self.assertFalse(wall_sample_valid(100.0, -1.0))
+
+    def test_no_finita_invalida(self) -> None:
+        for valor in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(valor=valor):
+                self.assertFalse(wall_sample_valid(100.0, valor))
+                self.assertFalse(wall_sample_valid(valor, 100.0))
+
+    def test_tipos_hostiles_invalidos(self) -> None:
+        for valor in (100, "100.0", None, True, [100.0]):
+            with self.subTest(tipo=type(valor).__name__):
+                self.assertFalse(wall_sample_valid(100.0, valor))
+
+    def test_muestra_invalida_produce_supervision_failed(self) -> None:
+        """Enlace con la clasificacion: no se degrada a otra causa."""
+        self.assertEqual(
+            classify(supervision_failure=not wall_sample_valid(100.0, 99.0),
+                     deadline_hit=True, validity_bound=True,
+                     externally_terminated=True),
+            (OUTCOME_SUPERVISION_FAILED, CAUSE_SUPERVISION_FAILURE))
+
+
+class CotasDePayloadTests(unittest.TestCase):
+    """G-M2-07/G-M2-12: fórmulas literales de D-M2-1(a)."""
+
+    def test_formulas_literales(self) -> None:
+        b = payload_bounds(1000, 2000, 65536)
+        self.assertEqual(b.stable_bytes, 1000 + 2000 + 2 * 65536)
+        self.assertEqual(b.materialization_peak_bytes,
+                         2 * (1000 + 2000) + 2 * 65536)
+        self.assertEqual(b.frame_reserve_bytes, 2 * 65536)
+
+    def test_limites_maximos_para_64_acciones(self) -> None:
+        """G-M2-12: confirma ARITMETICAMENTE las cifras del gate.
+
+        Con `max_stdout_bytes = max_stderr_bytes = 64 MiB` y 64 acciones:
+        8 GiB + 8 MiB estables y 16 GiB + 8 MiB de pico.
+        Esta prueba confirma la **formula publicada**; la ejecucion real a esa
+        escala NO se realiza y queda declarada como laguna en la evidencia.
+        """
+        mib = 1024 * 1024
+        gib = 1024 * mib
+        b = payload_bounds(64 * mib, 64 * mib, 65536, concurrent_actions=64)
+        self.assertEqual(b.stable_bytes, 8 * gib + 8 * mib)
+        self.assertEqual(b.materialization_peak_bytes, 16 * gib + 8 * mib)
+
+    def test_default_de_una_accion(self) -> None:
+        mib = 1024 * 1024
+        b = payload_bounds(64 * mib, 64 * mib, 65536, concurrent_actions=1)
+        self.assertEqual(b.stable_bytes, 128 * mib + 128 * 1024)
+        self.assertEqual(b.materialization_peak_bytes, 256 * mib + 128 * 1024)
+
+    def test_entradas_invalidas_rechazadas(self) -> None:
+        for kw in ({"max_stdout_bytes": -1}, {"max_stderr_bytes": 1.0},
+                   {"max_stdout_bytes": True}, {"concurrent_actions": 0.5}):
+            with self.subTest(kw=str(kw)):
+                base = {"max_stdout_bytes": 1024, "max_stderr_bytes": 1024}
+                base.update(kw)  # type: ignore[arg-type]
+                with self.assertRaises(ValueError):
+                    payload_bounds(**base)  # type: ignore[arg-type]
+
+    def test_no_es_una_cota_de_rss(self) -> None:
+        b = payload_bounds(1024, 1024)
+        self.assertIsInstance(b, PayloadBounds)
+        self.assertFalse(hasattr(b, "rss_bytes"),
+                         "el payload no se presenta como memoria del proceso")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -30,7 +30,7 @@ queda declarado, no dado por hecho.
 
 | Gate | Resultado |
 |---|---|
-| Suite completa `tests/` | **314 OK, 1 skip** |
+| Suite completa `tests/` | **339 OK, 1 skip** |
 | `fuzz_admision.py` (M1) | sin divergencias; fingerprint bases `795c3a96…` |
 | `fuzz_start_revalidation.py` (M2) | `gate: OK`, 1000 iteraciones, 0 divergencias, 0 crashes |
 

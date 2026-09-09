@@ -53,7 +53,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ..domain.deadline import compute_bounds
+from ..domain.deadline import compute_bounds, payload_bounds, wall_sample_valid
 from ..domain.execution_result import TerminalHandoff
 from ..domain.start_request import ExecutionPlan
 from ..ports.process_host import SpawnRejected
@@ -353,6 +353,8 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
 
     # Esperar al proceso principal: los pumps drenan, así que `wait` no puede
     # bloquearse contra un pipe lleno.
+    _payload = payload_bounds(int(plan["max_stdout_bytes"]),
+                              int(plan["max_stderr_bytes"]), FRAME_MAX_BYTES)
     returncode = child.wait()
     # Recolección del proceso principal: este instante fija los tiempos
     # (ADR-009). Lo que venga después sólo es latencia de entrega.
@@ -384,8 +386,7 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
     # Muestra final de pared: sólo alimenta `finished_at_wall`. Si no es
     # finita o regresa respecto de la inicial, se declara fallo de supervisión
     # y NO se fabrican tiempos (D-M2-3).
-    wall_ok = (isinstance(end_wall, float) and math.isfinite(end_wall)
-               and end_wall >= start_wall)
+    wall_ok = wall_sample_valid(start_wall, end_wall)
     terminal = {
         "returncode": returncode,
         "stdout_retained": pump_out.retained,
@@ -407,6 +408,9 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         # se agotó la espera de EOF. Nombres casi iguales para hechos distintos
         # invitan a confundirlos (R2).
         "eof_drain_forced_close": eof_drain_forced_close,
+        # Cotas de payload publicadas (D-M2-1(a)). NO son cotas de RSS.
+        "payload_stable_bytes": _payload.stable_bytes,
+        "payload_peak_bytes": _payload.materialization_peak_bytes,
         # INC-M2-4: plazo y terminación graduada.
         "deadline_effective_ms": bounds.deadline_effective_ms,
         "termination_grace_ms": bounds.termination_grace_ms,

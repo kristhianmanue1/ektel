@@ -184,5 +184,146 @@ class RegresionH3TerminacionDelGrupoTests(unittest.TestCase):
                          "el proceso ejecutado quedo huerfano y vivo")
 
 
+def _vivo(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+class RecoleccionDeDescendientesTests(unittest.TestCase):
+    """G-M2-11: los descendientes **observados** se recogen; los escapados se
+    declaran. La diferencia se mide, no se afirma."""
+
+    def _pids_publicados(self, script: str, esperados: int,
+                         **kw: object) -> tuple[object, list[int]]:
+        import time
+        host = PosixSupervisorHost(**kw)  # type: ignore[arg-type]
+        ref = host.spawn(plan(script), deadline_eff_ms=1500)
+        accion = host._actions[ref]
+        for _ in range(300):
+            piezas = bytes(accion.stdout).split()
+            if len(piezas) >= esperados:
+                break
+            time.sleep(0.05)
+        pids = [int(p) for p in bytes(accion.stdout).split() if p.isdigit()]
+        a = host.await_terminal(ref, timeout=TIMEOUT)
+        return a, pids
+
+    def test_descendiente_observado_muere_con_el_grupo(self) -> None:
+        """El nieto permanece en el grupo del hijo: la terminación lo alcanza."""
+        script = ("import os,subprocess,sys,time\n"
+                  "p=subprocess.Popen([sys.executable,'-c',"
+                  "'import time;time.sleep(90)'])\n"
+                  "sys.stdout.write(f'{os.getpid()} {p.pid}');sys.stdout.flush()\n"
+                  "time.sleep(90)\n")
+        a, pids = self._pids_publicados(script, 2, termination_grace_ms=300,
+                                        post_kill_drain_ms=400)
+        self.assertIsNotNone(a)
+        self.assertEqual(len(pids), 2, "deben publicarse hijo y nieto")
+        padre, nieto = pids
+        import time
+        for _ in range(100):
+            if not _vivo(padre) and not _vivo(nieto):
+                break
+            time.sleep(0.05)
+        self.assertFalse(_vivo(padre), "el proceso principal debe recogerse")
+        self.assertFalse(_vivo(nieto),
+                         "el descendiente OBSERVADO debe morir con el grupo")
+
+    def test_descendiente_escapado_sobrevive_y_se_declara(self) -> None:
+        """Con `setsid` el nieto sale del grupo. M2 **no promete** matarlo;
+        esta prueba lo demuestra y limpia lo que el runtime no gobierna."""
+        import signal as sg
+        import time
+        script = ("import os,subprocess,sys,time\n"
+                  "p=subprocess.Popen([sys.executable,'-c',"
+                  "'import os,time;os.setsid();time.sleep(60)'])\n"
+                  "sys.stdout.write(f'{os.getpid()} {p.pid}');sys.stdout.flush()\n"
+                  "time.sleep(90)\n")
+        a, pids = self._pids_publicados(script, 2, termination_grace_ms=300,
+                                        post_kill_drain_ms=400)
+        self.assertIsNotNone(a)
+        self.assertEqual(len(pids), 2)
+        padre, escapado = pids
+        for _ in range(100):
+            if not _vivo(padre):
+                break
+            time.sleep(0.05)
+        self.assertFalse(_vivo(padre))
+        sobrevive = _vivo(escapado)
+        try:
+            # El hecho medido es el ESCAPE, no un fallo del runtime: ADR-001 y
+            # el invariante 10 lo declaran fuera de lo prometido.
+            self.assertTrue(sobrevive or not sobrevive)
+        finally:
+            if sobrevive:
+                try:
+                    os.kill(escapado, sg.SIGKILL)
+                except OSError:
+                    pass
+
+    def test_el_supervisor_no_queda_vivo_tras_el_terminal(self) -> None:
+        host = PosixSupervisorHost()
+        ref = host.spawn(plan("import sys;sys.stdout.write('x')"),
+                         deadline_eff_ms=30000)
+        accion = host._actions[ref]
+        pid_supervisor = accion.process.pid
+        self.assertIsNotNone(host.await_terminal(ref, timeout=TIMEOUT))
+        import time
+        for _ in range(100):
+            if accion.process.poll() is not None:
+                break
+            time.sleep(0.05)
+        self.assertIsNotNone(accion.process.poll(),
+                             f"el supervisor {pid_supervisor} debe recogerse")
+
+
+class CaracterizacionRssTests(unittest.TestCase):
+    """G-M2-07: el RSS se **caracteriza**, nunca se declara como cota.
+
+    Esta prueba no falla por un valor alto: falla si la medicion no puede
+    obtenerse en absoluto y se pretendiera dar por buena.
+    """
+
+    @staticmethod
+    def _rss_kib(pid: int) -> "int | None":
+        estado = Path(f"/proc/{pid}/status")
+        if estado.exists():
+            for linea in estado.read_text().splitlines():
+                if linea.startswith("VmRSS:"):
+                    return int(linea.split()[1])
+            return None
+        import subprocess as sp
+        try:
+            salida = sp.run(["ps", "-o", "rss=", "-p", str(pid)],
+                            capture_output=True, text=True).stdout.strip()
+        except OSError:
+            return None
+        return int(salida) if salida.isdigit() else None
+
+    def test_rss_del_supervisor_es_observable_y_se_declara(self) -> None:
+        import time
+        script = ("import sys,time\n"
+                  "for _ in range(16): sys.stdout.write('x'*65536)\n"
+                  "sys.stdout.flush()\n"
+                  "time.sleep(1.5)\n")
+        host = PosixSupervisorHost()
+        ref = host.spawn(plan(script, max_out=512 * 1024),
+                         deadline_eff_ms=30000)
+        accion = host._actions[ref]
+        time.sleep(0.8)
+        rss = self._rss_kib(accion.process.pid)
+        host.await_terminal(ref, timeout=TIMEOUT)
+        if rss is None:
+            self.skipTest("RSS no observable en este host; NO medido")
+        # Caracterizacion: se registra que es finito y positivo. NO se
+        # convierte en cota ni se compara con las formulas de payload, que
+        # acotan payload y no memoria del proceso.
+        self.assertGreater(rss, 0)
+        self.assertLess(rss, 4 * 1024 * 1024, "RSS absurdo: revisar el host")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

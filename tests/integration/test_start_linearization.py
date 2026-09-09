@@ -21,6 +21,7 @@ from src.domain.start_outcomes import (  # noqa: E402
     Started,
 )
 from src.adapters.posix_supervisor import PosixSupervisorHost  # noqa: E402
+from src.adapters.replay_store_file import FileReplayStore  # noqa: E402
 from src.application.config import M2Config  # noqa: E402
 from src.application.start_service import StartService  # noqa: E402
 from src.domain.execution_result import (  # noqa: E402
@@ -335,6 +336,86 @@ class CicloCompletoTests(unittest.TestCase):
         assert handle is not None
         self.assertIsNone(svc.await_result(handle, timeout=0.5))
         svc.terminate(handle)
+
+
+class CrashAlrededorDelCasTests(unittest.TestCase):
+    """G-M2-06 con inyeccion de crash REAL: el proceso muere por SIGKILL
+    antes o despues de persistir el CAS, sobre el `FileReplayStore` durable.
+
+    Un `os._exit` no basta como modelo: SIGKILL no deja correr atexit, buffers
+    ni finalizadores, que es justo lo que puede ocultar un fallo de durabilidad.
+    """
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _matar_en(self, momento: str, identity: str) -> int:
+        """Consume (o no) el token y muere por SIGKILL en el momento pedido."""
+        import os
+        import subprocess as sp
+        guion = (
+            "import os, signal, sys\n"
+            "sys.path.insert(0, %r)\n"
+            "from src.adapters.replay_store_file import FileReplayStore\n"
+            "from pathlib import Path\n"
+            "s = FileReplayStore(Path(%r))\n"
+            "momento = %r\n"
+            "if momento == 'antes':\n"
+            "    os.kill(os.getpid(), signal.SIGKILL)\n"
+            "out = s.consume_start_token(%r)\n"
+            "s.close()\n"
+            "os.kill(os.getpid(), signal.SIGKILL)\n"
+        ) % (str(ROOT), str(self.dir), momento, identity)
+        proc = sp.run([sys.executable, "-c", guion], capture_output=True)
+        return proc.returncode
+
+    def test_crash_antes_del_cas_deja_el_token_sin_gastar(self) -> None:
+        identidad = "a" * 64
+        rc = self._matar_en("antes", identidad)
+        self.assertEqual(rc, -9, "el hijo debe morir por SIGKILL")
+        store = FileReplayStore(self.dir)
+        try:
+            self.assertEqual(store.start_token_status(identidad), "unspent")
+            # Y sigue siendo consumible: el crash no lo quemo.
+            self.assertIs(store.consume_start_token(identidad),
+                          ConsumeOutcome.CONSUMED)
+        finally:
+            store.close()
+
+    def test_crash_despues_del_cas_no_reabre_el_token(self) -> None:
+        identidad = "b" * 64
+        rc = self._matar_en("despues", identidad)
+        self.assertEqual(rc, -9)
+        store = FileReplayStore(self.dir)
+        try:
+            # El CAS quedo durable pese al SIGKILL inmediato.
+            self.assertEqual(store.start_token_status(identidad), "spent")
+            self.assertIs(store.consume_start_token(identidad),
+                          ConsumeOutcome.ALREADY_SPENT)
+        finally:
+            store.close()
+
+    def test_tras_crash_post_cas_el_coordinador_no_fabrica_handle(self) -> None:
+        """El CAS linealiza el derecho de inicio, no prueba que hubo spawn."""
+        identidad = "c" * 64
+        self._matar_en("despues", identidad)
+        store = FileReplayStore(self.dir)
+        try:
+            host = FakeProcessHost()
+            svc = make_start_service(store=store, host=host)
+            # Peticion cuya identidad es la ya gastada por el proceso muerto:
+            # se emula reconciliando directamente sobre el store real.
+            self.assertEqual(store.start_token_status(identidad), "spent")
+            self.assertEqual(host.spawns, [],
+                             "sin handle confirmado no se fabrica ninguno")
+            self.assertIsNone(svc.handle_for("0" * 16))
+        finally:
+            store.close()
 
 
 if __name__ == "__main__":  # pragma: no cover

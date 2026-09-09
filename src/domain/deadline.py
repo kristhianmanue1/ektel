@@ -105,3 +105,59 @@ def compute_bounds(deadline_effective_ms: int,
         soft_termination_after_start_ms=useful,
         hard_deadline_after_start_ms=deadline_effective_ms,
     )
+
+
+def wall_sample_valid(start_wall: object, end_wall: object) -> bool:
+    """¿La muestra final de reloj de pared es utilizable? (D-M2-3).
+
+    La muestra final **sólo** alimenta `finished_at_wall`. Si no es un número
+    finito o **regresa** respecto de la inicial, no se fabrican tiempos: se
+    produce `supervision_failed/supervision_failure`.
+
+    Vive aquí y no inline en el supervisor porque una regla que decide un
+    estado terminal debe poder probarse sin levantar un proceso.
+    """
+    if type(start_wall) is not float or type(end_wall) is not float:
+        return False
+    if not math.isfinite(start_wall) or not math.isfinite(end_wall):
+        return False
+    return end_wall >= start_wall
+
+
+@dataclass(frozen=True)
+class PayloadBounds:
+    """Cotas de payload por acción, fórmulas literales de D-M2-1(a).
+
+    **No son cotas de RSS.** Cubren el payload retenido; el overhead de
+    objetos, pipes y kernel se caracteriza pero no se publica como cota
+    exacta. Presentar esto como garantía de memoria baja está prohibido.
+    """
+    stable_bytes: int
+    materialization_peak_bytes: int
+    frame_reserve_bytes: int
+
+
+def payload_bounds(max_stdout_bytes: int, max_stderr_bytes: int,
+                   frame_max_bytes: int = 65536,
+                   concurrent_actions: int = 1) -> PayloadBounds:
+    """D-M2-1(a):
+
+        estable = max_stdout + max_stderr + 2 * frame_max
+        pico    = 2 * (max_stdout + max_stderr) + 2 * frame_max
+
+    El pico existe porque materializar el resultado inmutable puede crear una
+    segunda copia transitoria durante el handoff.
+    """
+    for name, value in (("max_stdout_bytes", max_stdout_bytes),
+                        ("max_stderr_bytes", max_stderr_bytes),
+                        ("frame_max_bytes", frame_max_bytes),
+                        ("concurrent_actions", concurrent_actions)):
+        if type(value) is not int or value < 0:
+            raise ValueError(f"{name}: entero exacto no negativo requerido")
+    reserve = 2 * frame_max_bytes
+    retained = max_stdout_bytes + max_stderr_bytes
+    return PayloadBounds(
+        stable_bytes=(retained + reserve) * concurrent_actions,
+        materialization_peak_bytes=(2 * retained + reserve) * concurrent_actions,
+        frame_reserve_bytes=reserve * concurrent_actions,
+    )

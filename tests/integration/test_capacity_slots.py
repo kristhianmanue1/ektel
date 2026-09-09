@@ -176,5 +176,77 @@ class RegresionSlotsTests(unittest.TestCase):
         self.assertEqual(svc.slots_in_use, 0)
 
 
+class CotasDeCapacidadTests(unittest.TestCase):
+    """G-M2-12: el modelo de payload por capacidad, medido a escala ejecutable.
+
+    La corrida a limites maximos —64 acciones de 64 MiB por stream, 16 GiB de
+    pico SOLO de payload— **no se ejecuta**. Dos razones, ambas declaradas:
+
+    1. el paquete M2 §2.2 excluye expresamente los tests de presion extrema;
+    2. este host tiene 16 GiB de RAM fisica, de modo que la corrida no seria
+       una medicion sino un OOM.
+
+    Lo que si se hace: confirmar la formula aritmeticamente y comprobar
+    empiricamente, a escala reducida, que el payload retenido real se ajusta al
+    modelo lineal. La extrapolacion a escala maxima es **aritmetica, no
+    medida**, y asi consta en la evidencia.
+    """
+
+    def test_el_payload_retenido_se_ajusta_al_modelo_lineal(self) -> None:
+        import sys as _sys
+        from src.adapters.posix_supervisor import (
+            FRAME_MAX_BYTES, PosixSupervisorHost)
+        from src.domain.deadline import payload_bounds
+        from src.domain.start_request import ExecutionPlan
+
+        acciones = 6
+        limite = 256 * 1024        # por stream y accion
+        script = ("import sys\n"
+                  "for _ in range(12): sys.stdout.write('o'*65536)\n"
+                  "for _ in range(12): sys.stderr.write('e'*65536)\n")
+        host = PosixSupervisorHost()
+        refs = []
+        for _ in range(acciones):
+            p = ExecutionPlan(
+                identity_digest="d" * 64, action_id="a", issuer_id="i",
+                exp_wall=0, command_absolute=_sys.executable,
+                args=("-c", script), cwd="/tmp",
+                env=ExecutionPlan.freeze_env({"PATH": "/usr/bin:/bin"}),
+                stdin_bytes=b"", deadline_ms=60000,
+                max_stdout_bytes=limite, max_stderr_bytes=limite)
+            refs.append(host.spawn(p, deadline_eff_ms=60000))
+
+        total = 0
+        for ref in refs:
+            a = host.await_terminal(ref, timeout=90)
+            self.assertIsNotNone(a)
+            assert a is not None
+            total += len(bytes(a.stdout)) + len(bytes(a.stderr))
+            # Cada accion retiene exactamente su limite por stream.
+            self.assertEqual(len(bytes(a.stdout)), limite)
+            self.assertEqual(len(bytes(a.stderr)), limite)
+
+        cota = payload_bounds(limite, limite, FRAME_MAX_BYTES,
+                              concurrent_actions=acciones).stable_bytes
+        self.assertLessEqual(total, cota,
+                             "el payload retenido excede la cota estable")
+        # El modelo es lineal en el numero de acciones: se comprueba, no se
+        # asume, que la cota agregada es multiplo exacto de la individual.
+        individual = payload_bounds(limite, limite, FRAME_MAX_BYTES).stable_bytes
+        self.assertEqual(cota, individual * acciones)
+
+    def test_la_escala_maxima_esta_declarada_como_no_ejecutada(self) -> None:
+        """Deja constancia en codigo de la cifra que NO se midio."""
+        from src.domain.deadline import payload_bounds
+        mib = 1024 * 1024
+        gib = 1024 * mib
+        b = payload_bounds(64 * mib, 64 * mib, 65536, concurrent_actions=64)
+        self.assertEqual(b.stable_bytes, 8 * gib + 8 * mib)
+        self.assertEqual(b.materialization_peak_bytes, 16 * gib + 8 * mib)
+        # La cifra excede la RAM fisica del host de referencia: ejecutarla
+        # seria un OOM, no una medicion.
+        self.assertGreater(b.materialization_peak_bytes, 16 * gib)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

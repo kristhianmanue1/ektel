@@ -429,5 +429,112 @@ class TerminacionGraduadaTests(SupervisorCase):
         self.assertEqual(a.terminal["returncode"], 0)
 
 
+class CotasDePayloadTests(SupervisorCase):
+    """G-M2-07: las dos formulas de D-M2-1(a), publicadas y contrastadas."""
+
+    def test_las_cotas_publicadas_siguen_las_formulas(self) -> None:
+        from src.domain.deadline import payload_bounds
+        host = PosixSupervisorHost()
+        ref = host.spawn(plan("import sys;sys.stdout.write('x')",
+                              max_out=4096, max_err=4096),
+                         deadline_eff_ms=30000)
+        a = host.await_terminal(ref, timeout=TIMEOUT)
+        assert a is not None and a.terminal is not None
+        esperado = payload_bounds(4096, 4096, FRAME_MAX_BYTES)
+        self.assertEqual(a.terminal["payload_stable_bytes"],
+                         esperado.stable_bytes)
+        self.assertEqual(a.terminal["payload_peak_bytes"],
+                         esperado.materialization_peak_bytes)
+        # 4096 + 4096 + 2*65536
+        self.assertEqual(esperado.stable_bytes, 4096 + 4096 + 131072)
+        self.assertEqual(esperado.materialization_peak_bytes,
+                         2 * 8192 + 131072)
+
+    def test_el_payload_retenido_nunca_excede_la_cota_estable(self) -> None:
+        """Contraste real: se inunda muy por encima del limite y se comprueba
+        que lo retenido cabe en la cota publicada."""
+        from src.domain.deadline import payload_bounds
+        script = ("import sys\n"
+                  "for _ in range(64): sys.stdout.write('o'*65536)\n"
+                  "for _ in range(64): sys.stderr.write('e'*65536)\n")
+        host = PosixSupervisorHost()
+        ref = host.spawn(plan(script, max_out=32768, max_err=32768),
+                         deadline_eff_ms=60000)
+        a = host.await_terminal(ref, timeout=TIMEOUT)
+        assert a is not None and a.terminal is not None
+        cota = payload_bounds(32768, 32768, FRAME_MAX_BYTES).stable_bytes
+        retenido = len(bytes(a.stdout)) + len(bytes(a.stderr))
+        self.assertLessEqual(retenido, cota)
+        self.assertEqual(len(bytes(a.stdout)), 32768)
+        self.assertEqual(len(bytes(a.stderr)), 32768)
+
+    def test_las_cotas_no_son_cotas_de_rss(self) -> None:
+        """Prohibido presentar el payload como garantia de memoria."""
+        from src.domain.deadline import PayloadBounds, payload_bounds
+        b = payload_bounds(1024, 1024)
+        self.assertIsInstance(b, PayloadBounds)
+        self.assertNotIn("rss", str(b).lower())
+
+
+class CierreForzadoPostKillTests(SupervisorCase):
+    """G-M2-07: `post_kill_forced_pipe_close=1` ejercitado de forma directa.
+
+    Requiere las dos condiciones a la vez: KILL efectivo **y** ausencia de EOF
+    porque un descendiente retiene los pipes.
+    """
+
+    def test_kill_mas_pipes_retenidos_declara_cierre_forzado(self) -> None:
+        # El descendiente debe ESCAPAR del grupo con `setsid`. Un nieto que
+        # permanece en el grupo tambien recibe el KILL —comprobado en el test
+        # siguiente— y entonces el EOF si llega, de modo que la clave post-KILL
+        # vale 0 legitimamente. Solo un escapado puede retener los pipes.
+        script = ("import os,signal,subprocess,sys,time\n"
+                  "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                  "subprocess.Popen([sys.executable,'-c',"
+                  "'import os,time;os.setsid();time.sleep(90)'])\n"
+                  "sys.stdout.write('listo');sys.stdout.flush()\n"
+                  "time.sleep(120)\n")
+        host = PosixSupervisorHost(termination_grace_ms=400,
+                                   post_kill_drain_ms=400)
+        ref = host.spawn(plan(script), deadline_eff_ms=1200)
+        a = host.await_terminal(ref, timeout=TIMEOUT)
+        assert a is not None and a.terminal is not None
+        t = a.terminal
+        self.assertTrue(t["killed"], "el proceso ignora TERM: debe recibir KILL")
+        self.assertEqual(t["post_kill_forced_pipe_close"], 1)
+        self.assertIsInstance(t["post_kill_forced_pipe_close"], int)
+        self.assertGreaterEqual(t["post_kill_drain_elapsed_ms"], 0)
+
+    def test_el_kill_al_grupo_alcanza_a_los_descendientes_observados(self) -> None:
+        """Contraparte del anterior: un nieto que NO escapa recibe el KILL del
+        grupo, sus pipes se cierran y por tanto NO hay cierre forzado."""
+        script = ("import signal,subprocess,sys,time\n"
+                  "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                  "subprocess.Popen([sys.executable,'-c','import time;time.sleep(90)'])\n"
+                  "sys.stdout.write('listo');sys.stdout.flush()\n"
+                  "time.sleep(120)\n")
+        host = PosixSupervisorHost(termination_grace_ms=400,
+                                   post_kill_drain_ms=400)
+        ref = host.spawn(plan(script), deadline_eff_ms=1200)
+        a = host.await_terminal(ref, timeout=TIMEOUT)
+        assert a is not None and a.terminal is not None
+        self.assertTrue(a.terminal["killed"])
+        self.assertEqual(a.terminal["post_kill_forced_pipe_close"], 0,
+                         "el descendiente observado murio con el grupo")
+
+    def test_sin_kill_no_hay_cierre_forzado_post_kill(self) -> None:
+        """La clave sólo vale 1 tras KILL; un cierre por EOF no la activa."""
+        script = ("import subprocess,sys\n"
+                  "subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'])\n"
+                  "sys.stdout.write('sale')\n")
+        host = PosixSupervisorHost()
+        ref = host.spawn(plan(script), deadline_eff_ms=30000)
+        a = host.await_terminal(ref, timeout=TIMEOUT)
+        assert a is not None and a.terminal is not None
+        self.assertTrue(a.terminal["eof_drain_forced_close"])
+        self.assertEqual(a.terminal["post_kill_forced_pipe_close"], 0,
+                         "sin KILL la clave post-KILL debe ser 0")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
