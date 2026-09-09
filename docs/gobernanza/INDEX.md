@@ -4,17 +4,56 @@
 
 > Pre-flight de Directivas v0.2.0 §3.2: antes de ejecutar una instrucción
 > del dueño con efecto en este repo, leer este índice. Una página, orden
-> inverso temporal, sin contenido normativo (solo punteros).
+> inverso temporal, **sin contenido normativo (solo punteros)**. Ante
+> discrepancia entre este índice y un documento normativo, manda el documento.
+
+**Estado del ciclo:** M0 y M1 cerrados (incluidas M1-R1 y M1-R2).
+**M2 y M3 no autorizados.** Ningún tag ni release hasta que M3 cierre.
 
 ## Decisiones activas (vigentes)
 
 | Fecha | Decisión | Qué decide | Ruta |
 |---|---|---|---|
+| 08-09 | **Cierre F0-A** (AEC) | Veredicto `F0-A-CLOSED`; stop decision expresa: **NO autoriza F0-B/C/D**, no adopta AEC, no modifica el estado funcional de EKTEL | propuestas/aec-fase-0/f0-a/f0-a-verdict.md |
 | 28-08 | Aceptación ADR-012 | Diseño M2 fijado; **NO autoriza** implementar M2/M3 ni crear tags/releases | decisiones/aceptacion-adr-012-supervision-m2-2026-08-28.md |
 | 28-08 | Cierre M1-R2 | Conformidad GuaranteePlan cerrada | decisiones/cierre-m1-r2-2026-08-28.md |
 | 28-08 | Aceptación ADR-011 | Handoff admisión→start normativo | decisiones/aceptacion-adr-011-handoff-2026-08-28.md |
 | 22-08 | **Cierre M1** | **Ningún tag ni release hasta M3 cerrado** (orden del dueño); sin push/PR/tag | decisiones/cierre-m1-2026-08-22.md |
 | 22-08 | Autorización M1 | Alcance M1 | decisiones/autorizacion-m1-2026-08-22.md |
+
+## Trabajo en preparación — NO autorizado
+
+Documentos que **no** son decisiones. Ninguno concede autoridad de
+construcción. No moverlos a `decisiones/` sin acto humano.
+
+| Fecha | Documento | Qué es | Ruta |
+|---|---|---|---|
+| 09-09 | Alcance técnico M2 (§8) | Enumeración propuesta de archivos/capas tocables en M2; propuesta del agente, **no autorizada** | propuestas/alcance-tecnico-m2-2026-09-09.md |
+| 09-09 | **Borrador acta autorización M2** | Borrador para revisión humana; **sin firma no es acta y NO AUTORIZA M2** | propuestas/borrador-autorizacion-m2-2026-09-09.md |
+| 28-08 | Paquete preparación M2 | Deliberación, invariantes y gates G-M2-01..15; **no es autorización** | propuestas/paquete-preparacion-m2-2026-08-28.md |
+
+## Expediente AEC (Agent Execution Contract)
+
+Investigación sobre un contrato neutral de ejecución agéntica que **no debe
+depender de EKTEL**. F0-A cerrada; **F0-B, F0-C y F0-D permanecen no
+autorizadas** y cada una exige un acto humano separado.
+
+| Qué | Ruta |
+|---|---|
+| Mandato operativo vigente de F0-A | propuestas/aec-fase-0/MANDATO-F0-A.md |
+| Veredicto de cierre (`F0-A-CLOSED`) | propuestas/aec-fase-0/f0-a/f0-a-verdict.md |
+| Corpus, vocabulario y modelos de confianza | propuestas/aec-fase-0/f0-a/ |
+| Cuestiones abiertas (0 P1, 12 P2 diferidos) | propuestas/aec-fase-0/f0-a/open-questions.md |
+| Registros de corrida multimodelo | propuestas/aec-fase-0/records/ |
+| Mandato original (sustituido, se conserva como provenance) | propuestas/Mandato-investigacion-Agent-Execution-Contract.md |
+
+**Clasificación:** `PRIVATE-SANITIZED` — no autoriza transmisión ni
+publicación. Única excepción: `f0-a/execution-paradigms.md`, marcado
+`PUBLISHABLE` como candidato.
+
+**Relación con M2:** no existe dependencia normativa demostrada entre F0-B y
+M2. Esto **no** significa que `H-family` haya prevalecido; F0-A la mantiene
+sólo como inclinación provisional, con `H-profiles` aún abierta.
 
 ## ADRs (docs/adr/, 001–012)
 
@@ -28,6 +67,15 @@
 
 | Qué | Dónde | Estado |
 |---|---|---|
+| Ambigüedad de fuente normativa: README §29 remite la tabla de garantías a la consolidación 14-08, autodeclarada «no vinculante», mientras el manifiesto declara normativa la especificación v1.2 | README.md, project-manifest.yaml | pendiente |
 | Caracterización x86_64 real (puerta pre-producción, N12/ADR-006) | README | pendiente |
 | Ampliación suite de caracterización (durabilidad bajo fallo, RSS) | README | pendiente |
-| Tag `pre-consenso-v0.3` (14-08) obsoleto: main 41 commits adelante | git | sin decisión del dueño |
+| Tag `pre-consenso-v0.3` → `ffdd566` (14-08): fijó el corpus previo al consenso D1–D7 (precondición §11.1 ya cumplida); hoy no apunta a nada vigente | git | sin decisión del dueño: conservar como marcador histórico o borrar |
+| Memoria AN-KLA sin respaldo: `.an-kla/` está en `.gitignore` y no viaja en git | .gitignore | sin decisión del dueño |
+
+<!--
+Nota de mantenimiento: no se registra aquí el número de commits que el tag
+pre-consenso-v0.3 lleva de retraso. Un contador se desactualiza con cada
+commit y ya indujo una cifra falsa (decía 41 cuando eran 45). Para obtenerlo
+en el momento: git rev-list --count pre-consenso-v0.3..HEAD
+-->
