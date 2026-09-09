@@ -69,6 +69,7 @@ from ..domain.representability import RepresentabilityError, check_execve_string
 from ..domain.stdin_policy import effective_stdin
 from ..ports.policy_port import Allow, Deny, Indeterminate, PolicyPort
 from ..ports.replay_store import ReplayStore, ReserveOutcome
+from .config import M2Config
 
 POLICY_MODES = ("absent", "optional", "required")
 
@@ -139,6 +140,7 @@ class AdmissionService:
         skew_tolerance_s: float = 30.0,
         wall_clock: Callable[[], float] = time.time,
         mono_clock: Callable[[], float] = time.monotonic,
+        m2_config: Optional[M2Config] = None,
     ) -> None:
         if policy_mode not in POLICY_MODES:
             raise ValueError(f"policy_mode invalido: {policy_mode!r}")
@@ -167,6 +169,11 @@ class AdmissionService:
         self._skew_tolerance_s = skew_tolerance
         self._wall_clock = wall_clock
         self._mono_clock = mono_clock
+        # Extensión aditiva M2 (A-M2-2): opt-in. `None` conserva exactamente
+        # el comportamiento observable de M1.
+        if m2_config is not None and not isinstance(m2_config, M2Config):
+            raise ValueError("m2_config debe ser M2Config o None")
+        self._m2_config = m2_config
 
     @property
     def active_key_id(self) -> str:
@@ -254,7 +261,8 @@ class AdmissionService:
                 self._operator_key, cap.identity_digest, doc["action_id"],
                 int(cap.exp), cap.issuer_id),
             identity_digest=cap.identity_digest,
-            guarantee_plan=_guarantee_plan(doc.get("requested_guarantees", [])),
+            guarantee_plan=_guarantee_plan(doc.get("requested_guarantees", []),
+                                           self._m2_config),
             policy_receipt=receipt,
             policy_mode=self._policy_mode,
             policy_degraded=degraded,
@@ -359,26 +367,54 @@ class AdmissionService:
             return None
 
 
-def _guarantee_plan(requested: object) -> tuple[dict[str, object], ...]:
+def _guarantee_plan(requested: object,
+                    m2_config: "Optional[M2Config]" = None,
+                    ) -> tuple[dict[str, object], ...]:
     """GuaranteePlan honesto de M1: las garantías v1 (`runtime_supervision`,
     `output_bounds`, `audit_trail`) son mecanismos de M2/M3 — en M1 se
     declaran `unsupported` hasta que su hito las opere con evidencia
     (spec §9 reglas 1–5; `guarantees_applied` refleja lo que realmente
-    operó, nunca lo solicitado)."""
+    operó, nunca lo solicitado).
+
+    **Extensión aditiva M2 (D-M2-3, acta de autorización M2 A-M2-2).** Con
+    `m2_config` presente, las magnitudes de M2 declaran en `mechanism` la
+    topología y en `assumptions` las entradas ASCII `clave=valor` congeladas
+    por D-M2-3. La clase sigue siendo `unsupported`: declarar configuración
+    **no es** promover una garantía. La promoción exige evidencia de que el
+    mecanismo operó, y en INC-M2-1 no existe supervisor todavía.
+
+    Con `m2_config=None` la salida es **idéntica** a la de M1, byte a byte.
+    El parámetro es opt-in precisamente para que la ruta M1 existente no
+    cambie de comportamiento observable (A-M2-3: una regresión de M1 sería
+    `SCOPE VIOLATION`).
+
+    `audit_trail` queda intacto en cualquier caso: es magnitud de M3 y M2 no
+    puede declarar nada sobre ella (D-M2-5(a)).
+    """
     plan = []
     if isinstance(requested, list):
         for magnitude in requested:
             if magnitude in _REQUESTED_GUARANTEES:
-                plan.append({
+                milestone = _MILESTONE.get(magnitude, "M?")
+                entry: dict[str, object] = {
                     "magnitude": magnitude,
                     "class": "unsupported",
                     "platform": "pending",
-                    "mechanism": f"mecanismo del hito { _MILESTONE.get(magnitude, 'M?') } (no operado en M1)",
+                    "mechanism": f"mecanismo del hito { milestone } (no operado en M1)",
                     "assumptions": [],
                     "known_escapes": [],
                     "failure_mode": "guarantee_not_enforced_in_m1",
                     "evidence_ref": "M1: pendiente de promoción por evidencia (spec §9)",
-                })
+                }
+                if m2_config is not None and milestone == "M2":
+                    entry["mechanism"] = (
+                        "supervisor POSIX dedicado por accion, grupo de procesos "
+                        "propio; configuracion declarada, mecanismo no operado")
+                    entry["assumptions"] = list(m2_config.guarantee_assumptions())
+                    entry["evidence_ref"] = (
+                        "M2: configuracion declarada; promocion pendiente de "
+                        "evidencia por plataforma (spec §9, G-M2-11)")
+                plan.append(entry)
     return tuple(plan)
 
 
