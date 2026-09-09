@@ -8,12 +8,15 @@
 > discrepancia entre este índice y un documento normativo, manda el documento.
 
 **Estado del ciclo:** M0 y M1 cerrados (incluidas M1-R1 y M1-R2).
-**M2 y M3 no autorizados.** Ningún tag ni release hasta que M3 cierre.
+**M2 AUTORIZADO el 09-09**, ligado al commit `4beb7ebe…`; implementación en
+curso dentro de esa frontera. **M3 no autorizado.** Ningún tag ni release hasta
+que M3 cierre.
 
 ## Decisiones activas (vigentes)
 
 | Fecha | Decisión | Qué decide | Ruta |
 |---|---|---|---|
+| 09-09 | **Autorización M2** | **M2 AUTORIZADO**, ligado al commit `4beb7ebe…`. Adopta A-M2-1..7 (SpawnFrontier aislar; `admit.py` aditivo; regresión M1 = SCOPE VIOLATION; terminación local y opaca; sin wire nuevo; semántica de revalidación congelada; evolución monotónica). **NO autoriza** M3, M4, tags ni releases | decisiones/autorizacion-m2-2026-09-09.md |
 | 08-09 | **Cierre F0-A** (AEC) | Veredicto `F0-A-CLOSED`; stop decision expresa: **NO autoriza F0-B/C/D**, no adopta AEC, no modifica el estado funcional de EKTEL | propuestas/aec-fase-0/f0-a/f0-a-verdict.md |
 | 28-08 | Aceptación ADR-012 | Diseño M2 fijado; **NO autoriza** implementar M2/M3 ni crear tags/releases | decisiones/aceptacion-adr-012-supervision-m2-2026-08-28.md |
 | 28-08 | Cierre M1-R2 | Conformidad GuaranteePlan cerrada | decisiones/cierre-m1-r2-2026-08-28.md |
@@ -21,20 +24,16 @@
 | 22-08 | **Cierre M1** | **Ningún tag ni release hasta M3 cerrado** (orden del dueño); sin push/PR/tag | decisiones/cierre-m1-2026-08-22.md |
 | 22-08 | Autorización M1 | Alcance M1 | decisiones/autorizacion-m1-2026-08-22.md |
 
-## Trabajo en preparación — NO autorizado
+## Documentos de preparación — no son decisiones
 
-Documentos que **no** son decisiones. Ninguno concede autoridad de
-construcción. No moverlos a `decisiones/` sin acto humano.
+Deliberación y alcance. **Por sí solos no conceden autoridad de construcción**;
+la autoridad de M2 vive exclusivamente en el acta de autorización. Se conservan
+en `propuestas/` como provenance y no se reescriben.
 
 | Fecha | Documento | Qué es | Ruta |
 |---|---|---|---|
-| 09-09 | Alcance técnico M2 (§8) — **rev 2** | Inventario de 45 rutas (32 nuevas, 13 existentes): 38 modificables/nuevas, 5 preservadas no modificables, 2 consumidas sin cambios. Sin pendientes de alcance. Propuesta del agente, **no autorizada** | propuestas/alcance-tecnico-m2-2026-09-09.md |
-| 09-09 | **Borrador acta autorización M2** — **rev 2** | Incorpora las resoluciones de alcance del 09-09 (SpawnFrontier aislar-no-retirar; `admit.py` aditivo con regla SCOPE VIOLATION; terminación local y opaca; evolución monotónica M1→M2). **Sin firma no es acta y NO AUTORIZA M2** | propuestas/borrador-autorizacion-m2-2026-09-09.md |
-
-**Estado de preparación M2:** `READY-FOR-HUMAN-AUTHORIZATION`. Las resoluciones
-de alcance del 09-09 fijan la frontera técnica revisable; **no conceden
-autoridad de construcción**. Faltan la decisión del dueño por canal, transcrita,
-y la firma. No mover el borrador a `decisiones/` sin ese acto.
+| 09-09 | Alcance técnico M2 (§8) — **rev 2** | Inventario de 45 rutas (32 nuevas, 13 existentes): 38 modificables/nuevas, 5 preservadas no modificables, 2 consumidas sin cambios. **Adoptado por referencia** por el acta de autorización M2 | propuestas/alcance-tecnico-m2-2026-09-09.md |
+| 09-09 | Borrador acta autorización M2 — **rev 2** | **Sustituido como candidato operativo** por `decisiones/autorizacion-m2-2026-09-09.md`; se conserva como provenance | propuestas/borrador-autorizacion-m2-2026-09-09.md |
 | 28-08 | Paquete preparación M2 | Deliberación, invariantes y gates G-M2-01..15; **no es autorización** | propuestas/paquete-preparacion-m2-2026-08-28.md |
 
 ## Expediente AEC (Agent Execution Contract)
