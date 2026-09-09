@@ -7,6 +7,8 @@
 > escribirse código M2**.
 
 **Fecha de redacción:** 2026-09-09.
+**Revisión:** 2 — incorpora la resolución humana de
+`FIX-SCOPE-BEFORE-AUTHORIZATION` (2026-09-09).
 **Estado:** borrador para revisión humana.
 **Redacción:** asiento documental por agente, por instrucción de continuidad
 del dueño (2026-09-09). El asiento transcribe y estructura; no crea ni amplía
@@ -18,17 +20,25 @@ Conforme al criterio de adopción de la especificación v1.2 §19 punto 6, **cad
 hito requiere su propia autorización**. M0 la obtuvo el 2026-08-20 y M1 el
 2026-08-22; **M2 y M3 siguen sin autorizar**.
 
-Para que este borrador se convierta en acta vigente faltan, como mínimo:
+**Resuelto en la revisión 2.** La enumeración exacta de archivos, que la
+revisión 1 dejaba abierta, está cerrada en §8.1 por referencia al documento de
+alcance técnico, con inventario reconciliado y verificado. Las tres cuestiones
+que motivaron `FIX-SCOPE-BEFORE-AUTHORIZATION` quedaron decididas por el dueño
+el 2026-09-09 e incorporadas en §8.2 (`SpawnFrontier`: aislar, no retirar),
+§8.3 (`admit.py`: aditivo, con regla `SCOPE VIOLATION`) y §8.4 (terminación
+local y opaca, con condición de parada `BLOCKED-BY-NORMATIVE-GAP`).
+
+Para que este borrador se convierta en acta vigente falta, como mínimo:
 
 1. **decisión explícita del dueño** por canal, transcrita fielmente (patrón de
    `autorizacion-m1-2026-08-22.md`: orden + adendas, si las hubiera);
-2. **enumeración final de archivos o capas exactas** y resolución de cualquier
-   solapamiento con cambios ajenos antes de escribir (paquete M2 §7, párrafo
-   final) — la §7 de este borrador propone el alcance por capa, pero la
-   concreción a archivos es acto del dueño o del ciclo autorizado;
-3. **asiento y firma** con fecha y referencia de canal.
+2. **asiento y firma** con fecha y referencia de canal.
 
 Hasta entonces el estado correcto es: *M2 preparado, no autorizado*.
+
+Las resoluciones de alcance del 2026-09-09 **no son autorización de
+implementación**: fijan la frontera técnica revisable, no conceden autoridad de
+construcción.
 
 ## 1. Objeto
 
@@ -183,7 +193,18 @@ la frontera correcta; CAGF u otros motores de gobernanza pueden ser
 implementaciones **externas** del puerto, nunca dependencias internas del
 runtime.
 
-### 4.3 Las garantías declaran su fuerza
+### 4.3 Evolución monotónica de M1 a M2
+
+M2 debe constituir una **extensión monotónica** de las garantías cerradas en M1,
+salvo que una decisión explícita autorice reabrir alguna de ellas.
+
+**Agregar funcionalidad M2 no concede autoridad para invalidar evidencia M1.**
+Este principio gobierna §8.2 (la frontera instrumental se preserva), §8.3 (la
+modificación de `admit.py` es aditiva, con regla `SCOPE VIOLATION`) y el
+tratamiento de las pruebas M1 existentes, que deben seguir pasando sin
+modificación.
+
+### 4.4 Las garantías declaran su fuerza
 
 No se presenta una observación best-effort como límite duro. Cada garantía
 declara explícitamente qué mecanismo la produce, sobre qué plataforma, qué
@@ -257,14 +278,94 @@ no puerta de M1–M3. Rosetta no es sustituto válido para la caracterización d
 |---|---|
 | `src/domain/` | tipos locales de start/handle/terminación/salida y máquina de estados pura; **sin eventos M3**. |
 | `src/application/` | `AdmissionService` sólo para configuración `audit_mode`, plan/promoción de garantías M2 y fórmula/topología; orquestación `start`, `terminate`, `await_result`, slots y orden ADR-011. **No reabre otras semánticas M1.** |
-| `src/ports/` | puerto de proceso/IPC estrictamente local; retirar o aislar `spawn_frontier.py`, cuya firma pre-ADR-011 no es el nuevo handoff. **No AuditSink sustituto.** |
-| `src/adapters/` | supervisor POSIX por acción y helpers de plataforma; retirar o aislar el adaptador instrumental M1 **sin perder sus pruebas**. |
+| `src/ports/` | puerto de proceso/IPC estrictamente local, **en paralelo** a la frontera instrumental M1, que se preserva intacta (§8.2). **No AuditSink sustituto.** |
+| `src/adapters/` | supervisor POSIX por acción y helpers de plataforma; el adaptador instrumental M1 se **preserva intacto** (§8.2). |
 | `tests/{unit,integration,adversarial,escape}/` | G-M2-01..15; procesos siempre acotados, identificables y recogidos. |
 | `scripts/`, `docs/evidencia/` | runner local reproducible, manifests y caracterización saneada; **sin secretos ni salida bruta sensible**. |
 
-> **Pendiente para la firma:** el acto definitivo debe enumerar archivos o capas
-> exactas y resolver cualquier solapamiento con cambios ajenos antes de
-> escribir (paquete M2 §7).
+### 8.1 Enumeración exacta de archivos
+
+El hueco que este borrador dejaba abierto queda **resuelto**. La enumeración
+concreta y revisable vive en
+`docs/propuestas/alcance-tecnico-m2-2026-09-09.md` (revisión 2), que forma
+parte de este acta por referencia:
+
+- **45 rutas inventariadas**: 32 nuevas propuestas y 13 existentes;
+- **38** modificables o nuevas — el alcance real de M2;
+- **5** preservadas, **no modificables** (§8.2);
+- **2** consumidas sin cambios (`replay_store` puerto y adaptador: las
+  primitivas CAS que M2 necesita ya existen y M1 las ejercitó).
+
+Cada ruta aparece exactamente una vez, con capa, motivo, incremento
+`INC-M2-1..5`, gates asociados, si toca M1 y riesgo.
+
+### 8.2 `SpawnFrontier` — aislar, no retirar
+
+**Decisión del dueño (2026-09-09): AISLAR, NO RETIRAR.** Durante M2 no se
+retira `SpawnFrontier` ni se elimina la evidencia M1 asociada. La frontera M2 se
+implementa **en paralelo** mediante `src/ports/process_host.py`.
+
+Motivo: forma parte de la evidencia existente de M1; hay pruebas adversariales
+que acreditan claims ya cerrados; eliminarla dentro de M2 produciría
+**discontinuidad de evidencia**; **M2 debe ser extensión del runtime, no
+reescritura retroactiva de M1**.
+
+Quedan **intactas** y deben seguir pasando sin modificación:
+`src/ports/spawn_frontier.py`, `src/adapters/spawn_frontier_counter.py`,
+`tests/unit/helpers_m1.py`, `tests/adversarial/test_fuzz_admision.py` y
+`tests/adversarial/test_policy_spawn_frontier.py` — este último con **20
+pruebas** que acreditan que M1 no crea procesos.
+
+`src/ports/__init__.py` y `src/adapters/__init__.py` se tocan **sólo para
+añadir** los símbolos M2; retirar un símbolo M1 de sus re-exports es
+`SCOPE VIOLATION` (§8.3).
+
+Una eliminación futura de `SpawnFrontier` exigirá evidencia sustitutiva
+equivalente o superior, demostración de que los claims M1 siguen válidos y
+decisión documental independiente. **Esa migración no ocurre dentro de M2.**
+
+### 8.3 `admit.py` — extensión aditiva y regla SCOPE VIOLATION
+
+Es la **única** modificación de código M1 autorizada, y **sólo** para
+transportar o declarar información que exigen los contratos M2 ya adoptados:
+configuración `audit_mode`; entradas ASCII `clave=valor` congeladas por D-M2-3
+en `GuaranteePlan.mechanism`/`assumptions`; promoción de garantías M2 probadas;
+`audit_trail=unsupported` conservado.
+
+**M2 no debe alterar el comportamiento observable previamente validado de la
+ruta M1.** Se preservan: semántica existente · decisiones de admisión M1 ·
+diagnósticos y su orden · comportamiento fail-closed · `PolicyPort` ·
+contratos wire · regresión M1 completa.
+
+**Regla de parada.** Si una prueba M1 existente cambia de resultado, se trata
+**inicialmente como `SCOPE VIOLATION`** y se **detiene ese incremento** hasta
+demostrar documentalmente que el cambio estaba autorizado. **Prohibido
+reinterpretar una regresión como adaptación implícita de M1 a M2.**
+
+### 8.4 Terminación — local y opaca
+
+El mecanismo de terminación permanece dentro del contrato local ya previsto:
+handle/capability local conforme a ADR-012, receipt opaco, local, no durable y
+sin MAC, con `capability_rejected` como único reason code de rechazo.
+
+**Prohibido crear:** nuevo wire schema · `termination-token-payload` firmado ·
+nuevo envelope · protocolo remoto · capability distribuida · mecanismo
+cross-host. El schema `termination-token-payload` permanece congelado **sin capa
+productora**, exactamente igual que hoy.
+
+**Condición de parada:** si durante INC-M2-2 se demuestra que M2 requiere
+necesariamente un nuevo payload wire o modificar contratos congelados,
+**DETENER EL INCREMENTO**, declarar `BLOCKED-BY-NORMATIVE-GAP` y volver al dueño
+con evidencia. **No inventar el contrato durante la implementación.**
+
+### 8.5 Ubicación de la revalidación
+
+**La decisión de archivo concreto pertenece al desarrollador. La semántica no.**
+Puede resolverse durante el incremento respetando arquitectura hexagonal,
+dominio sin dependencia de adaptadores, la pureza exigida por los gates, y
+**cero** llamadas nuevas a `PolicyPort`, **cero** `reserve_nonce` y **cero**
+emisión de token nuevo. Si resolver la ubicación exigiese cambiar alguna
+semántica normativa: **detener y escalar.**
 
 ## 9. Definition of Done y evidencia requerida
 
@@ -372,8 +473,13 @@ y requiere autorización propia.
 
 - **Decisión del dueño:** *pendiente* — sin firma, este documento no es acta.
 - **Transcripción de canal:** *pendiente*.
+- **Resoluciones de alcance:** dueño, por canal (2026-09-09) — `SpawnFrontier`
+  aislar y no retirar; `admit.py` aditivo con regla `SCOPE VIOLATION`;
+  terminación local y opaca con condición de parada. **Fijan frontera técnica;
+  no conceden autoridad de construcción.**
 - **Asiento documental:** borrador redactado el 2026-09-09 por instrucción de
-  continuidad del dueño. El asiento no crea ni amplía autoridad.
+  continuidad del dueño; revisión 2 el mismo día. El asiento no crea ni amplía
+  autoridad.
 
 ## 15. Evidencia de soporte
 
@@ -389,5 +495,7 @@ y requiere autorización propia.
 - Cierre de M1: `docs/decisiones/cierre-m1-2026-08-22.md`,
   `cierre-m1-r1-2026-08-28.md`, `cierre-m1-r2-2026-08-28.md`.
 - Patrón documental: `docs/decisiones/autorizacion-m1-2026-08-22.md`.
+- Alcance técnico §8 (inventario de 45 rutas, revisión 2):
+  `docs/propuestas/alcance-tecnico-m2-2026-09-09.md`.
 - Contexto AEC (no dependencia normativa):
   `docs/propuestas/aec-fase-0/f0-a/f0-a-verdict.md`.
