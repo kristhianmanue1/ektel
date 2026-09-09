@@ -12,7 +12,7 @@ que evalúe otro árbol no produce evidencia comparable.
 
 | Qué | Valor |
 |---|---|
-| Commit (raíz congelada) | *se fija al publicar este encargo; ver §1.1* |
+| Commit (raíz congelada) | `55579bd8337efd20fb2a799d5476926c90795a49` |
 | Manifiesto | `docs/evidencia/manifest-m2-sha256.txt`, 95 entradas |
 | MANIFEST-ROOT (sha256 del manifiesto) | `3e2110174ebe3b1365fdee0ed568675efa24c3cde67d696a040ff190d39524ae` |
 | Cobertura del manifiesto | `src/`, `tests/`, `scripts/`, `contracts/`. **No** `docs/` |
@@ -31,7 +31,7 @@ Y regenerar el manifiesto para confirmar **diff cero**:
 
 ```bash
 { echo "# Manifiesto M2 — raiz congelada para la revision externa G-M2-15"
-  echo "# Arbol del commit que contiene este archivo (padre: <padre>)."
+  echo "# Arbol del commit que contiene este archivo (padre: 31b4e4e...)."
   echo "# Cubre src/, tests/, scripts/ y contracts/. NO cubre docs/."
   find src tests scripts contracts/schemas contracts/vectors contracts/parsers \
     -type f \( -name '*.py' -o -name '*.json' -o -name '*.sh' \) \
@@ -68,7 +68,7 @@ Idéntico para los tres:
 | Caracterización por plataforma | `docs/evidencia/caracterizacion-m2-{darwin,linux}-2026-09-09.md` |
 | Claims y no-claims | `docs/claims-y-no-claims.md` |
 | Manifiesto | `docs/evidencia/manifest-m2-sha256.txt` |
-| Diff M2 completo | `git diff 4beb7ebe..<raíz congelada> -- src tests scripts` |
+| Diff M2 completo | `git diff 4beb7ebe..55579bd8337efd20fb2a799d5476926c90795a49 -- src tests scripts` |
 | Borrador de enmienda G-M2-12 | `docs/propuestas/borrador-enmienda-g-m2-12-2026-09-09.md` |
 
 ## 4. Obligaciones de falsación
