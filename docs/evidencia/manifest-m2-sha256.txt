@@ -1,6 +1,6 @@
-# Manifiesto M2 (INC-M2-1..5 + cierre de lagunas) — superficie funcional y de pruebas
-# Arbol de trabajo con el cierre de lagunas (padre: a520a9b2b3ef887ad724662d16e79a5768378e14).
-# Excluye manifest y evidencia para evitar autorreferencia documental.
+# Manifiesto M2 — raiz congelada para la revision externa G-M2-15
+# Arbol del commit que contiene este archivo (padre: 31b4e4e9f36b261d17b276c2127440b801c4934d).
+# Cubre src/, tests/, scripts/ y contracts/. NO cubre docs/.
 8e91f6f2c7711b8907be7597e67e6020f63fbd8a3e8a1e3e70e20a59929fca49  contracts/parsers/clean-room/ektel_cleanroom_parser.py
 e1b3004a7b6c1432e529457e525950743a756dd3556f21991df42ccd5ecb520a  contracts/parsers/reference/ektel_ref_parser.py
 2ffedb10e99a11a6012cbe0ad506db071dd48b5b4fac1048a74f0f84acdad616  contracts/schemas/v1/action-request.schema.json
