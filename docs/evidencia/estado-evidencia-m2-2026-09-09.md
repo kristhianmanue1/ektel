@@ -34,12 +34,24 @@ Ningún supervisor huérfano tras las suites.
 | **G-M2-09** deadline | **verde** | Aritmética pura completa y TERM→KILL con procesos reales. **Cerrado**: `wall_sample_valid` extraída a dominio y probada —regresión, no finitos, tipos hostiles— y enlazada con `supervision_failed` |
 | **G-M2-10** terminación | verde | Handle válido, forjado, cruzado, de otra acción, repetido, post-resultado, liberado. Evento de rechazo **pendiente M3**, no verde ficticio |
 | **G-M2-11** recolección/plan | **verde** | **Cerrado**: se mide que el descendiente **observado** muere con el grupo y que el **escapado** sobrevive y se declara; el supervisor se recoge tras el terminal. Subreaper aplicado realmente en Linux, `unsupported` en Darwin |
-| **G-M2-12** capacidad | **PARCIAL — declarado** | Cota respetada bajo carrera, sin gastar token, liberación en handoff, slot indeterminado observable y recuperable. Fórmulas confirmadas aritméticamente: 64 acciones a límites máximos dan **8 GiB + 8 MiB estables y 16 GiB + 8 MiB de pico**. Modelo lineal comprobado empíricamente a escala reducida (6 acciones × 256 KiB). **La corrida a escala máxima NO se ejecuta** — ver §Tensión |
+| **G-M2-12** capacidad | **PARCIAL — tensión normativa declarada** | Cota respetada bajo carrera, sin gastar token, liberación en handoff, slot indeterminado observable y recuperable. Fórmulas confirmadas aritméticamente: 64 acciones a límites máximos dan **8 GiB + 8 MiB estables y 16 GiB + 8 MiB de pico**. Modelo lineal comprobado empíricamente a escala reducida (6 acciones × 256 KiB). **La corrida a escala máxima NO se ejecuta** — ver §Tensión |
 | **G-M2-13** plataforma | verde | Suites separadas; skips y degradaciones declarados |
 | **G-M2-14** regresión | verde | M1-R2, gates M0/M1, `mypy --strict`, vectores diff cero, fuzzers |
 | **G-M2-15** frontera | **PENDIENTE** | El diff no toca schemas, workflows, dependencias, M3, x86_64, tag ni release. Falta la **revisión adversarial externa `PROCEED` sobre el código real** |
 
-## Tensión normativa detectada en G-M2-12
+## Tensión normativa en G-M2-12 — enmienda de criterio propuesta
+
+Existe un **borrador de enmienda de criterio** en
+`docs/propuestas/borrador-enmienda-g-m2-12-2026-09-09.md`, que reevalúa la
+evidencia existente contra un criterio de diez puntos y concluye que los diez
+están cubiertos.
+
+**Ese borrador no promueve el gate.** Mientras no exista acta humana de
+enmienda, el estado es y permanece
+`G-M2-12 = PARCIAL — tensión normativa declarada`. Tras la firma corresponde
+rehacer la reevaluación contra el árbol vigente en ese momento.
+
+## Origen de la tensión
 
 G-M2-12 pide confirmar con **límites máximos** un pico de 16 GiB + 8 MiB de
 payload. Dos hechos lo impiden, y ninguno es una excusa operativa:
@@ -48,11 +60,15 @@ payload. Dos hechos lo impiden, y ninguno es una excusa operativa:
 2. el host de referencia tiene **16 GiB de RAM física**, de modo que la
    corrida no sería una medición sino un OOM.
 
-La confirmación aritmética y la validación del modelo lineal a escala reducida
-son lo máximo defendible sin contradecir §2.2. **Resolver la tensión es
-decisión del dueño**: o se acepta la confirmación aritmética como suficiente
-para este gate, o se autoriza expresamente un entorno con memoria bastante y
-se levanta la exclusión de §2.2 para este caso.
+La incompatibilidad es **normativa y previa al host**: seguiría existiendo en
+una máquina con 512 GiB, porque §2.2 no excluye por falta de memoria sino por
+**clase de prueba**. Por eso corresponde una enmienda de criterio y no una
+excepción: el defecto está en el criterio, no en la implementación.
+
+**Formulación obligatoria** mientras rija la exclusión de §2.2: la cota máxima
+fue demostrada **analíticamente** y la implementación fue comprobada
+**empíricamente a escala segura**. Queda prohibido declarar que «se probó
+16 GiB».
 
 No se marca verde por acumulación de pruebas parciales.
 
