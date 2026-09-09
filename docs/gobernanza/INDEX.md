@@ -28,8 +28,13 @@ construcción. No moverlos a `decisiones/` sin acto humano.
 
 | Fecha | Documento | Qué es | Ruta |
 |---|---|---|---|
-| 09-09 | Alcance técnico M2 (§8) | Enumeración propuesta de archivos/capas tocables en M2; propuesta del agente, **no autorizada** | propuestas/alcance-tecnico-m2-2026-09-09.md |
-| 09-09 | **Borrador acta autorización M2** | Borrador para revisión humana; **sin firma no es acta y NO AUTORIZA M2** | propuestas/borrador-autorizacion-m2-2026-09-09.md |
+| 09-09 | Alcance técnico M2 (§8) — **rev 2** | Inventario de 45 rutas (32 nuevas, 13 existentes): 38 modificables/nuevas, 5 preservadas no modificables, 2 consumidas sin cambios. Sin pendientes de alcance. Propuesta del agente, **no autorizada** | propuestas/alcance-tecnico-m2-2026-09-09.md |
+| 09-09 | **Borrador acta autorización M2** — **rev 2** | Incorpora las resoluciones de alcance del 09-09 (SpawnFrontier aislar-no-retirar; `admit.py` aditivo con regla SCOPE VIOLATION; terminación local y opaca; evolución monotónica M1→M2). **Sin firma no es acta y NO AUTORIZA M2** | propuestas/borrador-autorizacion-m2-2026-09-09.md |
+
+**Estado de preparación M2:** `READY-FOR-HUMAN-AUTHORIZATION`. Las resoluciones
+de alcance del 09-09 fijan la frontera técnica revisable; **no conceden
+autoridad de construcción**. Faltan la decisión del dueño por canal, transcrita,
+y la firma. No mover el borrador a `decisiones/` sin ese acto.
 | 28-08 | Paquete preparación M2 | Deliberación, invariantes y gates G-M2-01..15; **no es autorización** | propuestas/paquete-preparacion-m2-2026-08-28.md |
 
 ## Expediente AEC (Agent Execution Contract)
