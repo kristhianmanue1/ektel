@@ -148,22 +148,24 @@ class RegresionH3TerminacionDelGrupoTests(unittest.TestCase):
     GRUPO del proceso ejecutado, no al supervisor. Antes lo dejaba huerfano."""
 
     def test_request_termination_no_deja_al_hijo_huerfano(self) -> None:
-        import subprocess as sp
         import time
-        script = "import time,sys\nsys.stdout.write('vivo');sys.stdout.flush()\ntime.sleep(60)\n"
+        # El propio hijo publica su PID por stdout. Descubrirlo con `pgrep`
+        # ataba la prueba a un binario externo que no existe en toda imagen
+        # (lo detecto la corrida Linux); ademas esto mide exactamente el
+        # proceso ejecutado, no un descendiente cualquiera.
+        script = ("import os,time,sys\n"
+                  "sys.stdout.write(str(os.getpid()));sys.stdout.flush()\n"
+                  "time.sleep(60)\n")
         host = PosixSupervisorHost()
         ref = host.spawn(plan(script), deadline_eff_ms=60000)
-        # Esperar a que exista el proceso ejecutado.
         accion = host._actions[ref]
-        hijos: list[str] = []
-        for _ in range(100):
-            hijos = sp.run(["pgrep", "-P", str(accion.process.pid)],
-                           capture_output=True, text=True).stdout.split()
-            if hijos:
+        for _ in range(200):
+            if bytes(accion.stdout).strip().isdigit():
                 break
             time.sleep(0.05)
-        self.assertTrue(hijos, "no se observo el proceso ejecutado")
-        pid = int(hijos[0])
+        crudo = bytes(accion.stdout).strip()
+        self.assertTrue(crudo.isdigit(), "no se observo el PID del ejecutado")
+        pid = int(crudo)
 
         host.request_termination(ref)
 
