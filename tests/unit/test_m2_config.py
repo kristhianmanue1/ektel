@@ -49,7 +49,8 @@ class HostileTypeTests(unittest.TestCase):
 
     def test_bool_rechazado_en_cada_entero(self) -> None:
         for field in ("max_concurrent_actions", "termination_grace_ms",
-                      "post_kill_drain_ms"):
+                      "post_kill_drain_ms", "credit_timeout_ms",
+                      "eof_drain_timeout_ms"):
             for value in (True, False):
                 with self.subTest(field=field, value=value):
                     with self.assertRaises(M2ConfigError):
@@ -57,7 +58,8 @@ class HostileTypeTests(unittest.TestCase):
 
     def test_float_rechazado_aunque_sea_entero_exacto(self) -> None:
         for field in ("max_concurrent_actions", "termination_grace_ms",
-                      "post_kill_drain_ms"):
+                      "post_kill_drain_ms", "credit_timeout_ms",
+                      "eof_drain_timeout_ms"):
             with self.subTest(field=field):
                 with self.assertRaises(M2ConfigError):
                     M2Config.build(**{field: 1.0})
@@ -85,6 +87,8 @@ class RangeTests(unittest.TestCase):
             ("max_concurrent_actions", -1),
             ("termination_grace_ms", -1), ("termination_grace_ms", 60001),
             ("post_kill_drain_ms", 0), ("post_kill_drain_ms", 10001),
+            ("credit_timeout_ms", 99), ("credit_timeout_ms", 600001),
+            ("eof_drain_timeout_ms", 0), ("eof_drain_timeout_ms", 10001),
         ]
         for field, value in casos:
             with self.subTest(field=field, value=value):
@@ -113,6 +117,30 @@ class AuditModeFrontierTests(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(M2ConfigError):
                     M2Config.build(audit_mode=value)
+
+
+class CotasTemporalesTests(unittest.TestCase):
+    """R1: toda cota temporal de comportamiento observable pasa por la misma
+    disciplina de D-M2-3, no por constantes inventadas en un adaptador."""
+
+    def test_defaults_declarados(self) -> None:
+        cfg = M2Config.build()
+        self.assertEqual(cfg.credit_timeout_ms, 30000)
+        self.assertEqual(cfg.eof_drain_timeout_ms, 3000)
+
+    def test_el_default_de_credito_es_holgado(self) -> None:
+        """R3: un coordinador lento no debe perder salida; el default no puede
+        ser tan corto como para castigar la lentitud normal."""
+        self.assertGreaterEqual(M2Config.build().credit_timeout_ms, 10000)
+
+    def test_el_host_rechaza_cotas_no_enteras_o_no_positivas(self) -> None:
+        from src.adapters.posix_supervisor import PosixSupervisorHost
+        for kw in ({"credit_timeout_ms": 0}, {"credit_timeout_ms": 1.0},
+                   {"credit_timeout_ms": True}, {"eof_drain_timeout_ms": -1},
+                   {"eof_drain_timeout_ms": "500"}):
+            with self.subTest(kw=str(kw)):
+                with self.assertRaises(ValueError):
+                    PosixSupervisorHost(**kw)  # type: ignore[arg-type]
 
 
 class AssumptionsTests(unittest.TestCase):

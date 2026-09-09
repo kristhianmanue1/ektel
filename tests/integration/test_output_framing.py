@@ -184,11 +184,20 @@ class RegresionRondaAdversarialTests(unittest.TestCase):
                                 payload.decode("utf-8"))
                             break
                 finally:
+                    for pipe in (action.process.stdin,  # type: ignore[attr-defined]
+                                 action.process.stdout):  # type: ignore[attr-defined]
+                        try:
+                            if pipe is not None:
+                                pipe.close()
+                        except Exception:
+                            pass
                     action.done.set()  # type: ignore[attr-defined]
 
         script = ("import sys\n"
                   "for _ in range(32): sys.stdout.write('x'*65536)\n")
-        host = SordoHost()
+        # Cota corta e **inyectada**: antes era una constante inventada dentro
+        # del adaptador y no se podia ejercitar sin esperar su valor fijo (R1).
+        host = SordoHost(credit_timeout_ms=300)
         ref = host.spawn(plan(script, max_out=1024 * 1024), deadline_eff_ms=60000)
         action = host.await_terminal(ref, timeout=45)
         self.assertIsNotNone(action, "el supervisor no debe quedar bloqueado")
@@ -212,7 +221,7 @@ class RegresionRondaAdversarialTests(unittest.TestCase):
         assert action is not None
         t = action.terminal
         assert t is not None
-        self.assertTrue(t["forced_pipe_close"],
+        self.assertTrue(t["eof_drain_forced_close"],
                         "debe declarar el cierre forzado de pipes")
         self.assertEqual(t["returncode"], 0)
 
@@ -251,6 +260,94 @@ class RegresionRondaAdversarialTests(unittest.TestCase):
         self.assertLessEqual(t["max_unacked_stderr"], 1)
         self.assertGreaterEqual(t["max_unacked_stdout"], 1,
                                 "la medicion debe haber observado trafico real")
+
+    def test_r3_coordinador_lento_pero_vivo_no_pierde_salida(self) -> None:
+        """R3: `deja de consumir` != `es lento`. Un coordinador vivo aunque
+        lento debe conservar la salida que cabia en `max_stdout_bytes`.
+
+        Antes, con una cota fija de 2 s, se perdia el 87 % de una salida que
+        cabia perfectamente.
+        """
+        import json as _json
+        import time as _time
+        import src.adapters.posix_supervisor as mod
+
+        class LentoHost(mod.PosixSupervisorHost):
+            def _collect(self, action: object) -> None:  # type: ignore[override]
+                source = action.process.stdout  # type: ignore[attr-defined]
+                sink = action.process.stdin  # type: ignore[attr-defined]
+                try:
+                    while True:
+                        frame = mod._read_frame(source)
+                        if frame is None:
+                            break
+                        kind, stream, payload = frame
+                        if kind == b"F":
+                            action.stdout.extend(payload)  # type: ignore[attr-defined]
+                            _time.sleep(0.4)   # lento, pero vivo
+                            sink.write(stream)
+                            sink.flush()
+                        elif kind == b"T":
+                            action.terminal = _json.loads(  # type: ignore[attr-defined]
+                                payload.decode("utf-8"))
+                            break
+                finally:
+                    for pipe in (sink, source):
+                        try:
+                            if pipe is not None:
+                                pipe.close()
+                        except Exception:
+                            pass
+                    action.done.set()  # type: ignore[attr-defined]
+
+        total = 4 * 65536
+        script = ("import sys\n"
+                  "for _ in range(4): sys.stdout.write('x'*65536); sys.stdout.flush()\n")
+        host = LentoHost(credit_timeout_ms=30000)
+        ref = host.spawn(plan(script, max_out=total), deadline_eff_ms=60000)
+        action = host.await_terminal(ref, timeout=60)
+        assert action is not None and action.terminal is not None
+        t = action.terminal
+        self.assertEqual(t["stdout_retained"], total,
+                         "un coordinador lento no debe perder salida")
+        self.assertEqual(t["stdout_discarded_bytes"], 0)
+        self.assertFalse(t["credit_starved"])
+
+    def test_r3_canal_cerrado_degrada_sin_esperar_la_cota(self) -> None:
+        """Canal cerrado es senal inequivoca: se descarta de inmediato, sin
+        agotar `credit_timeout_ms`."""
+        import time as _time
+        import src.adapters.posix_supervisor as mod
+
+        class MudoHost(mod.PosixSupervisorHost):
+            def _collect(self, action: object) -> None:  # type: ignore[override]
+                # Cierra el canal de acks de inmediato y no vuelve a leer.
+                try:
+                    action.process.stdin.close()  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                try:
+                    action.process.stdout.read()  # type: ignore[attr-defined]
+                    action.process.stdout.close()  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                try:
+                    # Recolectar al supervisor: dejarlo corriendo convertiria
+                    # la prueba en fuente de procesos huerfanos.
+                    action.process.wait(timeout=30)  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                action.done.set()  # type: ignore[attr-defined]
+
+        script = ("import sys\n"
+                  "for _ in range(8): sys.stdout.write('x'*65536)\n")
+        # Cota enorme: si se esperara, la prueba tardaria 600 s.
+        host = MudoHost(credit_timeout_ms=600000)
+        t0 = _time.monotonic()
+        ref = host.spawn(plan(script, max_out=8 * 65536), deadline_eff_ms=60000)
+        host.await_terminal(ref, timeout=60)
+        self.assertLess(_time.monotonic() - t0, 45.0,
+                        "el canal cerrado no debe esperar la cota de lentitud")
 
     def test_h6_el_registro_no_crece_sin_limite(self) -> None:
         host = PosixSupervisorHost()

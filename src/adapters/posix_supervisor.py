@@ -53,13 +53,10 @@ from . import platform_caps
 
 #: Cota de frame de D-M2-1(a): 64 KiB por stream.
 FRAME_MAX_BYTES = 65536
-#: Espera máxima de crédito antes de degradar a descarte (H1). D-M2-1(a):
-#: si el coordinador deja de consumir, el supervisor **sigue drenando** al
-#: hijo y descarta el exceso; nunca se bloquea dejando de leer.
-CREDIT_TIMEOUT_S = 2.0
-#: Cota de espera de EOF tras la salida del proceso principal (H2). Un nieto
-#: que retiene los pipes no puede producir una espera ilimitada.
-EOF_DRAIN_TIMEOUT_S = 3.0
+#: Espejos de los defaults validados en `application.config.M2Config`. Estas
+#: cotas **no** se inventan aquí: el llamador las inyecta ya validadas (R1).
+DEFAULT_CREDIT_TIMEOUT_MS = 30000
+DEFAULT_EOF_DRAIN_TIMEOUT_MS = 3000
 #: El descriptor del plan **se comunica por argv**, no se asume fijo:
 #: `pass_fds` conserva el número original que devuelva `os.pipe()`, y ese
 #: número depende de cuántos descriptores tenga abiertos el coordinador.
@@ -108,17 +105,40 @@ class _StreamPump:
     descarta el exceso contando bytes exactos."""
 
     def __init__(self, stream: bytes, source: "object", limit: int,
-                 emit: "object", credit: threading.Semaphore) -> None:
+                 emit: "object", credit: threading.Semaphore,
+                 credit_timeout_s: float,
+                 channel_closed: threading.Event) -> None:
         self.stream = stream
         self._source = source
         self._limit = limit
         self._emit = emit
         self._credit = credit
+        self._credit_timeout_s = credit_timeout_s
+        self._channel_closed = channel_closed
         self.retained = 0
         self.discarded = 0
         self.truncated = False
         #: El coordinador dejó de confirmar y se pasó a descarte (H1).
         self.credit_starved = False
+
+    def _acquire_credit(self) -> bool:
+        """Espera crédito distinguiendo **canal cerrado** de **canal lento**.
+
+        D-M2-1(a) manda descartar cuando el coordinador **deja de consumir**.
+        Un coordinador simplemente lento no es eso: colapsar ambos casos en un
+        único plazo corto perdía salida que cabía en `max_stdout_bytes` (R3).
+
+        - canal cerrado (EOF de acks): señal inequívoca, degrada de inmediato;
+        - canal lento: espera hasta la cota **configurada**, holgada.
+        """
+        deadline = time.monotonic() + self._credit_timeout_s
+        while True:
+            if self._channel_closed.is_set():
+                return False
+            if self._credit.acquire(timeout=0.05):
+                return True
+            if time.monotonic() >= deadline:
+                return False
 
     def run(self) -> None:
         while True:
@@ -139,7 +159,7 @@ class _StreamPump:
                 if keep:
                     # Máximo un frame no confirmado por stream. Si el crédito
                     # no llega, NO se deja de leer: se degrada a descarte.
-                    if self._credit.acquire(timeout=CREDIT_TIMEOUT_S):
+                    if self._acquire_credit():
                         self._emit(self.stream, keep)  # type: ignore[operator]
                         self.retained += len(keep)
                     else:
@@ -263,12 +283,18 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
     threading.Thread(target=on_channel_close, daemon=True).start()
 
     assert child.stdout is not None and child.stderr is not None
+    credit_timeout_s = int(plan.get("credit_timeout_ms",
+                                    DEFAULT_CREDIT_TIMEOUT_MS)) / 1000.0
+    eof_drain_s = int(plan.get("eof_drain_timeout_ms",
+                               DEFAULT_EOF_DRAIN_TIMEOUT_MS)) / 1000.0
     pump_out = _StreamPump(_STREAM_OUT, child.stdout,
                            int(plan["max_stdout_bytes"]), emit,
-                           credits[_STREAM_OUT])
+                           credits[_STREAM_OUT], credit_timeout_s,
+                           channel_closed)
     pump_err = _StreamPump(_STREAM_ERR, child.stderr,
                            int(plan["max_stderr_bytes"]), emit,
-                           credits[_STREAM_ERR])
+                           credits[_STREAM_ERR], credit_timeout_s,
+                           channel_closed)
     # Daemon: si un nieto retiene los pipes, el hilo puede quedar dentro de
     # `read1` y cerrar el descriptor NO lo desbloquea. No se depende de
     # desbloquearlo: el supervisor emite su terminal y sale igualmente.
@@ -283,11 +309,11 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
 
     # Cota de EOF (H2). Un nieto que hereda y RETIENE los pipes impide el EOF
     # aunque el principal ya salió; sin esta cota la espera es ilimitada.
-    forced_pipe_close = False
-    deadline = time.monotonic() + EOF_DRAIN_TIMEOUT_S
+    eof_drain_forced_close = False
+    deadline = time.monotonic() + eof_drain_s
     for h in hilos:
         h.join(timeout=max(0.0, deadline - time.monotonic()))
-    if any(h.is_alive() for h in hilos):
+    if any(h.is_alive() for h in hilos):  # noqa: E501
         # No hay EOF porque alguien más retiene el extremo de escritura. Se
         # declara el cierre forzado y se continúa: los contadores publicados
         # son los observados hasta este instante, no un total que el supervisor
@@ -298,7 +324,7 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         # supervisor exactamente igual que el problema que se quiere acotar.
         # Los pumps son daemon y los descriptores se cierran al salir el
         # proceso, que es inmediato tras emitir el terminal.
-        forced_pipe_close = True
+        eof_drain_forced_close = True
     terminal = {
         "returncode": returncode,
         "stdout_retained": pump_out.retained,
@@ -315,8 +341,11 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         "max_unacked_stdout": unacked_peak[_STREAM_OUT],
         "max_unacked_stderr": unacked_peak[_STREAM_ERR],
         "credit_starved": pump_out.credit_starved or pump_err.credit_starved,
-        # H2: se declara cuando hubo que cerrar los pipes para acotar la espera.
-        "forced_pipe_close": forced_pipe_close,
+        # Hecho DISTINTO de `post_kill_forced_pipe_close` de D-M2-3, que
+        # describe el cierre forzado tras KILL (INC-M2-4). Aquí no hubo KILL:
+        # se agotó la espera de EOF. Nombres casi iguales para hechos distintos
+        # invitan a confundirlos (R2).
+        "eof_drain_forced_close": eof_drain_forced_close,
     }
     with write_lock:
         _write_frame(frames_out, b"T", b"-",
@@ -345,9 +374,18 @@ class SupervisedAction:
 class PosixSupervisorHost:
     """`ProcessHost` real: un supervisor dedicado por acción."""
 
-    def __init__(self, *, subreaper_requested: bool = True) -> None:
+    def __init__(self, *, subreaper_requested: bool = True,
+                 credit_timeout_ms: int = DEFAULT_CREDIT_TIMEOUT_MS,
+                 eof_drain_timeout_ms: int = DEFAULT_EOF_DRAIN_TIMEOUT_MS,
+                 ) -> None:
+        for name, value in (("credit_timeout_ms", credit_timeout_ms),
+                            ("eof_drain_timeout_ms", eof_drain_timeout_ms)):
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"{name}: entero exacto positivo requerido")
         self._caps = platform_caps.detect()
         self._subreaper_requested = subreaper_requested
+        self._credit_timeout_ms = credit_timeout_ms
+        self._eof_drain_timeout_ms = eof_drain_timeout_ms
         self._actions: dict[str, SupervisedAction] = {}
         self._lock = threading.Lock()
 
@@ -368,6 +406,8 @@ class PosixSupervisorHost:
             "deadline_eff_ms": deadline_eff_ms,
             "subreaper_requested": (self._subreaper_requested
                                     and self._caps.subreaper_available),
+            "credit_timeout_ms": self._credit_timeout_ms,
+            "eof_drain_timeout_ms": self._eof_drain_timeout_ms,
         }).encode("utf-8")
 
         plan_r, plan_w = os.pipe()

@@ -41,6 +41,17 @@ AUDIT_MODES = (AUDIT_MODE_OPTIONAL, AUDIT_MODE_REQUIRED)
 MAX_CONCURRENT_ACTIONS_RANGE = (1, 64)
 TERMINATION_GRACE_MS_RANGE = (0, 60000)
 POST_KILL_DRAIN_MS_RANGE = (1, 10000)
+#: R1: toda cota temporal de comportamiento observable pasa por la misma
+#: disciplina de D-M2-3 —tipo exacto, rango, fail-closed— en vez de vivir como
+#: constante inventada dentro de un adaptador.
+#: Espera de crédito antes de degradar a descarte. El default es holgado a
+#: propósito: un coordinador **lento** no debe perder salida que cabía en
+#: `max_stdout_bytes`; sólo un canal **cerrado** justifica descartar de
+#: inmediato (R3).
+CREDIT_TIMEOUT_MS_RANGE = (100, 600000)
+#: Cota de espera de EOF tras la salida del proceso principal. Es un hecho
+#: **distinto** de `post_kill_drain_ms`, que acota el drenaje tras KILL.
+EOF_DRAIN_TIMEOUT_MS_RANGE = (1, 10000)
 
 #: Alcance del supervisor fijado por D-M2-2(a): uno dedicado por acción.
 SUPERVISOR_SCOPE_PER_ACTION = "per_action"
@@ -74,6 +85,8 @@ class M2Config:
     post_kill_drain_ms: int
     audit_mode: str
     subreaper_requested: bool
+    credit_timeout_ms: int
+    eof_drain_timeout_ms: int
 
     @staticmethod
     def build(
@@ -83,6 +96,8 @@ class M2Config:
         post_kill_drain_ms: object = 1000,
         audit_mode: object = AUDIT_MODE_OPTIONAL,
         subreaper_requested: object = False,
+        credit_timeout_ms: object = 30000,
+        eof_drain_timeout_ms: object = 3000,
     ) -> "M2Config":
         """Valida y construye. Fail-closed: cualquier defecto es excepción,
         nunca un `StartFailed` ni un valor por defecto silencioso."""
@@ -98,6 +113,11 @@ class M2Config:
         if type(audit_mode) is not str or audit_mode not in AUDIT_MODES:
             raise M2ConfigError(
                 f"audit_mode: valor invalido; se esperaba uno de {AUDIT_MODES}")
+        credit_timeout = _exact_int_in_range(
+            credit_timeout_ms, "credit_timeout_ms", *CREDIT_TIMEOUT_MS_RANGE)
+        eof_drain = _exact_int_in_range(
+            eof_drain_timeout_ms, "eof_drain_timeout_ms",
+            *EOF_DRAIN_TIMEOUT_MS_RANGE)
         if type(subreaper_requested) is not bool:
             raise M2ConfigError("subreaper_requested: tipo exacto bool requerido")
         if audit_mode == AUDIT_MODE_REQUIRED:
@@ -111,6 +131,8 @@ class M2Config:
             post_kill_drain_ms=drain,
             audit_mode=audit_mode,
             subreaper_requested=subreaper_requested,
+            credit_timeout_ms=credit_timeout,
+            eof_drain_timeout_ms=eof_drain,
         )
 
     def guarantee_assumptions(

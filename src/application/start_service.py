@@ -133,7 +133,10 @@ class StartService:
         self._handles_lock = threading.Lock()
         # Slots retenidos por indeterminación, con su identidad, para que la
         # capacidad perdida sea observable y recuperable por acto explícito.
+        # Cerrojo propio: es un invariante distinto del registro de handles y
+        # compartirlo mezclaba dos responsabilidades bajo un mismo mutex (R4).
         self._retained: list[str] = []
+        self._retained_lock = threading.Lock()
 
     @property
     def coordinator_instance(self) -> str:
@@ -149,7 +152,7 @@ class StartService:
 
         Sin esto la capacidad decrecería de forma monótona y silenciosa.
         """
-        with self._handles_lock:
+        with self._retained_lock:
             return tuple(self._retained)
 
     def release_indeterminate(self, identity_digest: str) -> bool:
@@ -160,7 +163,7 @@ class StartService:
         ektel no puede comprobarlo por sí mismo —ésa es precisamente la
         indeterminación— y no finge lo contrario.
         """
-        with self._handles_lock:
+        with self._retained_lock:
             if identity_digest not in self._retained:
                 return False
             self._retained.remove(identity_digest)
@@ -263,7 +266,7 @@ class StartService:
             # El slot NO se libera: podría haber un proceso vivo asociado.
             # Se **registra** para que exista ruta de recuperación explícita
             # (H5); liberarlo automáticamente destruiría la razón de retenerlo.
-            with self._handles_lock:
+            with self._retained_lock:
                 self._retained.append(plan.identity_digest)
             return _failed(REASON_START_FAILED_INDETERMINATE, "spawn:indeterminate")
         if type(handle_ref) is not str or len(handle_ref) != 16:
