@@ -56,3 +56,94 @@ def valid_start_pair(**overrides: Any) -> tuple[str, bytes]:
 def valid_start_request(**overrides: Any) -> StartRequest:
     token, raw = valid_start_pair(**overrides)
     return StartRequest(admitted_action=token, action_request_wire=raw)
+
+
+class FakeProcessHost:
+    """Doble determinista del `ProcessHost` (INC-M2-2: cero spawn real)."""
+
+    def __init__(self, *, reject: bool = False, raise_unknown: bool = False,
+                 bad_ref: bool = False) -> None:
+        self.reject = reject
+        self.raise_unknown = raise_unknown
+        self.bad_ref = bad_ref
+        self.spawns: list[Any] = []
+        self.terminations: list[str] = []
+        self._n = 0
+
+    def spawn(self, plan: Any, *, deadline_eff_ms: int) -> str:
+        from src.ports.process_host import SpawnRejected
+        if self.reject:
+            raise SpawnRejected("host_rejected")
+        if self.raise_unknown:
+            raise RuntimeError("fallo opaco del host")
+        self.spawns.append((plan, deadline_eff_ms))
+        if self.bad_ref:
+            return "no-es-un-ref"
+        self._n += 1
+        return f"{self._n:016x}"
+
+    def request_termination(self, handle_ref: str) -> None:
+        self.terminations.append(handle_ref)
+
+
+class HostileStore:
+    """Store que devuelve valores sin autoridad o falla, para reconciliación."""
+
+    def __init__(self, consume: Any = None, status: object = "unknown",
+                 raise_consume: bool = False,
+                 raise_status: bool = False) -> None:
+        self._consume = consume
+        self._status = status
+        self._raise_consume = raise_consume
+        self._raise_status = raise_status
+        self.status_calls = 0
+
+    def reserve_nonce(self, issuer_id: str, nonce: str, until: float) -> Any:
+        from src.ports.replay_store import ReserveOutcome
+        return ReserveOutcome.RESERVED
+
+    def consume_start_token(self, identity_digest: str) -> Any:
+        if self._raise_consume:
+            raise RuntimeError("store caido")
+        return self._consume
+
+    def start_token_status(self, identity_digest: str) -> Any:
+        self.status_calls += 1
+        if self._raise_status:
+            raise RuntimeError("status caido")
+        return self._status
+
+
+def make_start_service(store: Any = None, host: Any = None,
+                       config: Any = None, now: float | None = None) -> Any:
+    """Construye un `StartService` con relojes y dobles deterministas."""
+    from src.application.start_service import StartService
+    from .helpers_m1 import MemoryReplayStore
+    return StartService(
+        replay_store=store if store is not None else MemoryReplayStore(),
+        process_host=host if host is not None else FakeProcessHost(),
+        operator_key=TEST_KEY,
+        active_key_id=TEST_KEY_ID,
+        config=config,
+        skew_tolerance_s=30.0,
+        wall_clock=(lambda: float(NOW) if now is None else now),
+    )
+
+
+def distinct_start_request(n: int) -> StartRequest:
+    """`StartRequest` coherente y **distinto** por índice.
+
+    Varía `action_id` y `nonce` **en el binding de la capacidad además de en
+    el documento**: cambiar sólo el documento produce `binding:action_id` y la
+    admisión lo rechaza (no es un fallo del runtime sino del fixture).
+    """
+    from .helpers_m1 import (
+        base_binding, make_capability_envelope, make_request)
+    action_id = f"action-{n:04d}"
+    nonce = f"{n:032x}"
+    envelope = make_capability_envelope(
+        binding=base_binding(action_id=action_id), nonce=nonce)
+    doc = make_request(env=envelope, nonce=nonce, action_id=action_id)
+    raw = emit_request(doc)
+    return StartRequest(admitted_action=admitted_token(raw),
+                        action_request_wire=raw)
