@@ -2,11 +2,12 @@
 
 Puro: sin reloj propio. `now_wall` se inyecta.
 
-**Introducido en INC-M2-2 con el subconjunto que el orden de ADR-011 §2.6
-exige antes del CAS**: `ceil_exact_ms`, `remaining_validity_ms` y
-`deadline_eff_ms`. Las cotas de terminación graduada
-(`applied_grace_ms`, `useful_runtime_ms`, `soft_termination_at`,
-`hard_deadline_at`) pertenecen a INC-M2-4 y todavía no viven aquí.
+Introducido en INC-M2-2 con el subconjunto anterior al CAS y **completado en
+INC-M2-4** con la terminación graduada de D-M2-3.
+
+Los instantes se exportan como **offsets relativos al inicio**, nunca como
+instantes monotónicos: un valor monotónico no tiene significado fuera del
+proceso que lo tomó.
 
 `ceil_exact_ms` multiplica por 1000 el valor **racional exacto** del `float`
 validado —vía `as_integer_ratio()`— y redondea **hacia arriba** con división
@@ -16,6 +17,7 @@ redondear a la baja regalaría tiempo de ejecución después de `exp`.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -60,3 +62,46 @@ def validity_exhausted(requested_deadline_ms: int, remaining_ms: int) -> bool:
     vigencia restante fue **menor o igual** que la duración pedida. En empate
     **gana vigencia**, explícitamente."""
     return remaining_ms <= requested_deadline_ms
+
+
+@dataclass(frozen=True)
+class TimeBounds:
+    """Cotas de D-M2-3, todas en milisegundos y relativas al inicio."""
+    deadline_effective_ms: int
+    termination_grace_ms: int
+    applied_grace_ms: int
+    useful_runtime_ms: int
+    soft_termination_after_start_ms: int
+    hard_deadline_after_start_ms: int
+
+
+def compute_bounds(deadline_effective_ms: int,
+                   termination_grace_ms: int) -> TimeBounds:
+    """Fórmulas de D-M2-3.
+
+        applied_grace_ms    = min(termination_grace_ms, deadline_eff_ms)
+        useful_runtime_ms   = deadline_eff_ms - applied_grace_ms
+        soft_termination_at = start_mono + useful_runtime_ms
+        hard_deadline_at    = start_mono + deadline_eff_ms
+
+    Una gracia mayor o igual que el plazo efectivo deja `useful_runtime_ms` en
+    cero: el proceso recibe TERM de inmediato. No es un error, es la
+    consecuencia declarada de configurar una gracia que no cabe.
+
+    El plazo post-KILL **no amplía** el deadline de ejecución: sólo acota la
+    latencia adicional de recolección de pipes antes de entregar el resultado.
+    """
+    if type(deadline_effective_ms) is not int or deadline_effective_ms <= 0:
+        raise ValueError("deadline_effective_ms debe ser entero positivo")
+    if type(termination_grace_ms) is not int or termination_grace_ms < 0:
+        raise ValueError("termination_grace_ms debe ser entero no negativo")
+    applied = min(termination_grace_ms, deadline_effective_ms)
+    useful = deadline_effective_ms - applied
+    return TimeBounds(
+        deadline_effective_ms=deadline_effective_ms,
+        termination_grace_ms=termination_grace_ms,
+        applied_grace_ms=applied,
+        useful_runtime_ms=useful,
+        soft_termination_after_start_ms=useful,
+        hard_deadline_after_start_ms=deadline_effective_ms,
+    )

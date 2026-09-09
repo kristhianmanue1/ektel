@@ -41,7 +41,13 @@ import threading
 import time
 from typing import Callable, Optional
 
-from ..domain.deadline import deadline_eff_ms
+from ..domain.deadline import deadline_eff_ms, remaining_validity_ms, validity_exhausted
+from ..domain.execution_result import (
+    AwaitedExecution,
+    ExecutionResult,
+    classify,
+    freeze_measurements,
+)
 from ..domain.execution_handle import ExecutionHandle
 from ..domain.revalidation import revalidate_start_request
 from ..domain.start_outcomes import (
@@ -206,6 +212,9 @@ class StartService:
         if not now_wall < plan.exp_wall:
             self._slots.release()
             return _failed(REASON_CAPABILITY_REJECTED, "token:expired")
+        remaining = remaining_validity_ms(plan.exp_wall, now_wall)
+        validity_bound = (remaining is not None
+                          and validity_exhausted(plan.deadline_ms, remaining))
         effective_ms = deadline_eff_ms(plan.deadline_ms, plan.exp_wall, now_wall)
         if effective_ms is None:
             # Vida útil nula: rechazar ANTES del CAS y sin spawn. No se gasta
@@ -220,7 +229,7 @@ class StartService:
             return outcome
 
         # 5. Spawn inmediato, sin dependencia externa intermedia.
-        return self._spawn(plan, effective_ms)
+        return self._spawn(plan, effective_ms, validity_bound)
 
     def _consume(self, identity_digest: str) -> Optional[StartFailed]:
         """CAS y reconciliación. `None` significa `CONSUMED`."""
@@ -254,9 +263,11 @@ class StartService:
         # "unknown" y cualquier otro valor: prevalece lo indeterminado.
         return _failed(REASON_START_FAILED_INDETERMINATE, f"{origin}:unknown")
 
-    def _spawn(self, plan: ExecutionPlan, effective_ms: int) -> StartOutcome:
+    def _spawn(self, plan: ExecutionPlan, effective_ms: int,
+               validity_bound: bool = False) -> StartOutcome:
         try:
-            handle_ref = self._process_host.spawn(plan, deadline_eff_ms=effective_ms)
+            handle_ref = self._process_host.spawn(
+                plan, deadline_eff_ms=effective_ms, validity_bound=validity_bound)
         except SpawnRejected as exc:
             # Fallo explícito y síncrono ANTES de crear proceso: determinado.
             self._slots.release()
@@ -323,18 +334,32 @@ class StartService:
             pass
         return accepted
 
-    def await_result(self, handle: object) -> object:
-        """Transfiere la propiedad del resultado terminal y libera el slot.
+    def await_result(self, handle: object, *,
+                     timeout: float = 30.0) -> object:
+        """Espera acotada del resultado y transfiere su propiedad.
 
-        En INC-M2-2 el portador `AwaitedExecution` con stdout/stderr todavía no
-        existe: la salida acotada llega en INC-M2-3 y su entrega en INC-M2-4.
+        Devuelve `AwaitedExecution` —resultado tipado más stdout/stderr
+        acotados, D-M2-1(a)—. Los buffers son memoria del llamador; ektel no
+        afirma gobernarla. `None` significa **ausencia honesta**: el traspaso
+        terminal no llegó dentro del plazo, y no se fabrica un resultado.
+
+        El slot se libera al completarse el traspaso, no antes.
         """
         if not isinstance(handle, ExecutionHandle):
             return None
-        result = handle.take_terminal_result()
-        if result is not None:
-            self._release_handle(handle)
-        return result
+        handoff = self._process_host.collect_terminal(
+            handle.handle_ref, timeout=timeout)
+        if handoff is None:
+            # Ruta de dobles deterministas: resultado depositado en el handle.
+            stored = handle.take_terminal_result()
+            if stored is not None:
+                self._release_handle(handle)
+            return stored
+        awaited = _build_awaited(handoff)
+        handle.store_terminal_result(awaited)
+        handle.take_terminal_result()
+        self._release_handle(handle)
+        return awaited
 
     def _release_handle(self, handle: ExecutionHandle) -> None:
         with self._handles_lock:
@@ -350,3 +375,38 @@ class StartService:
         if type(value) is not float or not math.isfinite(value):
             return None
         return value
+
+
+def _build_awaited(handoff: object) -> AwaitedExecution:
+    """Clasifica el traspaso observado. La semántica la fija el coordinador,
+    no el adaptador: éste sólo reporta hechos."""
+    raw = getattr(handoff, "raw", {})
+    outcome, cause = classify(
+        supervision_failure=bool(raw.get("wall_sample_invalid")),
+        deadline_hit=bool(raw.get("deadline_hit")),
+        validity_bound=bool(raw.get("validity_bound")),
+        externally_terminated=bool(raw.get("externally_terminated")),
+    )
+    grace_applied = int(raw.get("termination_grace_ms", 0) or 0)
+    useful = int(raw.get("useful_runtime_ms", 0) or 0)
+    subreaper = bool(raw.get("subreaper_applied"))
+    result = ExecutionResult(
+        outcome=outcome,
+        cause=cause,
+        exit_status=(raw.get("returncode")
+                     if type(raw.get("returncode")) is int else None),
+        duration_monotonic_ms=int(raw.get("duration_monotonic_ms", 0) or 0),
+        finished_at_wall=(raw.get("finished_at_wall")
+                          if type(raw.get("finished_at_wall")) is float
+                          else None),
+        # `guarantees_applied` declara lo que REALMENTE operó, no lo pedido.
+        guarantees_applied=(
+            f"termination_grace_ms_applied={grace_applied}",
+            f"useful_runtime_ms={useful}",
+            f"subreaper_applied={'1' if subreaper else '0'}",
+        ),
+        measurements=freeze_measurements(raw),
+    )
+    return AwaitedExecution(result=result,
+                            stdout=getattr(handoff, "stdout", b""),
+                            stderr=getattr(handoff, "stderr", b""))

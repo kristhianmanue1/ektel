@@ -20,11 +20,26 @@ from src.domain.start_outcomes import (  # noqa: E402
     StartFailed,
     Started,
 )
+from src.adapters.posix_supervisor import PosixSupervisorHost  # noqa: E402
+from src.application.config import M2Config  # noqa: E402
+from src.application.start_service import StartService  # noqa: E402
+from src.domain.execution_result import (  # noqa: E402
+    AwaitedExecution,
+    CAUSE_DEADLINE_DURATION,
+    CAUSE_NATURAL_EXIT,
+    MEASUREMENT_KEYS,
+    OUTCOME_DEADLINE_EXCEEDED,
+    OUTCOME_EXECUTED,
+)
+from src.domain.start_request import StartRequest  # noqa: E402
 from src.ports.replay_store import ConsumeOutcome  # noqa: E402
-from tests.unit.helpers_m1 import MemoryReplayStore  # noqa: E402
+from tests.unit.helpers_m1 import (  # noqa: E402
+    MemoryReplayStore, NOW, TEST_KEY, TEST_KEY_ID, base_binding,
+    emit_request, make_capability_envelope, make_request)
 from tests.unit.helpers_m2 import (  # noqa: E402
     FakeProcessHost,
     HostileStore,
+    admitted_token,
     make_start_service,
     valid_start_request,
 )
@@ -203,6 +218,123 @@ class RegresionRelojYEstadoTests(unittest.TestCase):
         self.assertEqual(out.reason_code, REASON_START_FAILED_INDETERMINATE)
         self.assertEqual(out.safe_detail, "cas:unavailable:status_type")
         self.assertEqual(host.spawns, [])
+
+
+
+
+def _pair(script: str, n: int = 1, *, deadline_ms: int = 30000,
+          max_out: int = 65536) -> StartRequest:
+    """Peticion coherente que ejecuta `script` con el interprete actual."""
+    action_id = f"action-{n:04d}"
+    nonce = f"{n:032x}"
+    limits = {"max_stdout_bytes": max_out, "max_stderr_bytes": 4096}
+    binding = base_binding(action_id=action_id, command_absolute=sys.executable,
+                           args=["-c", script], deadline_ms=deadline_ms,
+                           output_limits=limits)
+    env = make_capability_envelope(binding=binding, nonce=nonce)
+    doc = make_request(env=env, nonce=nonce, action_id=action_id,
+                       command_absolute=sys.executable, args=["-c", script],
+                       deadline_ms=deadline_ms, output_limits=limits)
+    raw = emit_request(doc)
+    return StartRequest(admitted_action=admitted_token(raw),
+                        action_request_wire=raw)
+
+
+def _real_service(**kw: object) -> StartService:
+    """Coordinador real contra supervisor real: sin dobles."""
+    host = PosixSupervisorHost(**kw)  # type: ignore[arg-type]
+    return StartService(
+        replay_store=MemoryReplayStore(), process_host=host,
+        operator_key=TEST_KEY, active_key_id=TEST_KEY_ID,
+        config=M2Config.build(max_concurrent_actions=4),
+        wall_clock=lambda: float(NOW))
+
+
+class CicloCompletoTests(unittest.TestCase):
+    """INC-M2-4: `start` -> supervision -> `await_result` con procesos reales.
+
+    Falsifica que `await_result` fabrique resultados, pierda la salida acotada
+    o clasifique por exit status en vez de por causa.
+    """
+
+    def test_salida_natural_entrega_awaited_execution(self) -> None:
+        svc = _real_service()
+        out = svc.start(_pair("import sys;sys.stdout.write('hola');"
+                              "sys.stderr.write('err')"))
+        self.assertIsInstance(out, Started)
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        awaited = svc.await_result(handle, timeout=40)
+        self.assertIsInstance(awaited, AwaitedExecution)
+        assert isinstance(awaited, AwaitedExecution)
+        self.assertEqual(awaited.stdout, b"hola")
+        self.assertEqual(awaited.stderr, b"err")
+        self.assertEqual(awaited.result.outcome, OUTCOME_EXECUTED)
+        self.assertEqual(awaited.result.cause, CAUSE_NATURAL_EXIT)
+        self.assertEqual(awaited.result.exit_status, 0)
+
+    def test_executed_con_exit_status_no_cero(self) -> None:
+        """`executed` es salida natural, NO exito (invariante 9)."""
+        svc = _real_service()
+        out = svc.start(_pair("raise SystemExit(3)", n=2))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        awaited = svc.await_result(handle, timeout=40)
+        assert isinstance(awaited, AwaitedExecution)
+        self.assertEqual(awaited.result.outcome, OUTCOME_EXECUTED)
+        self.assertEqual(awaited.result.exit_status, 3)
+
+    def test_deadline_excedido_se_clasifica_por_causa(self) -> None:
+        svc = _real_service(termination_grace_ms=500)
+        out = svc.start(_pair("import time;time.sleep(60)", n=3,
+                              deadline_ms=1500))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        awaited = svc.await_result(handle, timeout=40)
+        assert isinstance(awaited, AwaitedExecution)
+        self.assertEqual(awaited.result.outcome, OUTCOME_DEADLINE_EXCEEDED)
+        self.assertEqual(awaited.result.cause, CAUSE_DEADLINE_DURATION)
+
+    def test_mediciones_congeladas_y_garantias_aplicadas(self) -> None:
+        svc = _real_service(termination_grace_ms=700)
+        out = svc.start(_pair("import sys;sys.stdout.write('x')", n=4,
+                              deadline_ms=2500))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        awaited = svc.await_result(handle, timeout=40)
+        assert isinstance(awaited, AwaitedExecution)
+        self.assertEqual(tuple(awaited.result.measurements), MEASUREMENT_KEYS)
+        self.assertEqual(awaited.result.measurements["useful_runtime_ms"], 1800)
+        # `guarantees_applied` declara lo que opero, no lo pedido.
+        self.assertIn("termination_grace_ms_applied=700",
+                      awaited.result.guarantees_applied)
+        self.assertIn("useful_runtime_ms=1800", awaited.result.guarantees_applied)
+
+    def test_el_slot_se_libera_al_completar_el_traspaso(self) -> None:
+        svc = _real_service()
+        out = svc.start(_pair("import sys;sys.stdout.write('x')", n=5))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        self.assertEqual(svc.slots_in_use, 1)
+        svc.await_result(handle, timeout=40)
+        self.assertEqual(svc.slots_in_use, 0)
+        self.assertIsNone(svc.handle_for(out.handle_ref))
+
+    def test_ausencia_honesta_si_no_llega_el_traspaso(self) -> None:
+        """`None`, no un resultado fabricado."""
+        svc = _real_service()
+        out = svc.start(_pair("import time;time.sleep(30)", n=6,
+                              deadline_ms=60000))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        self.assertIsNone(svc.await_result(handle, timeout=0.5))
+        svc.terminate(handle)
 
 
 if __name__ == "__main__":  # pragma: no cover

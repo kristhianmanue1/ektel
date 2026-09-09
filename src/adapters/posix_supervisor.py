@@ -26,11 +26,16 @@ por `argv`, porque `argv` es visible en el listado de procesos y §2.7 trata
 stdin y entorno como material sensible. Por `argv` viaja únicamente el
 **número** de ese descriptor, que no es material sensible.
 
-**Alcance de este incremento.** INC-M2-3 cubre spawn, grupo, stdin acotado,
-drenaje continuo, captura acotada y recolección del principal. La terminación
-graduada TERM→KILL, el plazo y `post_kill_drain_ms` son de **INC-M2-4**: aquí
-el `deadline_eff_ms` se transporta y se registra, pero **todavía no se
-aplica**, y este módulo no afirma lo contrario.
+**Terminación graduada (INC-M2-4, D-M2-3).** Al alcanzarse
+`soft_termination_after_start_ms` se envía TERM **al grupo**; al alcanzarse
+`hard_deadline_after_start_ms`, KILL. El plazo post-KILL **no amplía** el
+deadline: sólo acota la latencia adicional de recolección de pipes antes de
+entregar el resultado, y al expirar se declara `post_kill_forced_pipe_close`.
+
+`finished_at_wall` y `duration_monotonic_ms` miden **hasta la recolección del
+proceso principal**. Si la muestra final de reloj de pared no es finita o
+regresa respecto de la inicial, se produce `supervision_failed` **sin fabricar
+tiempos**.
 
 API EXPERIMENTAL (spec §16). stdlib-only + ctypes declarado (ADR-006).
 """
@@ -38,6 +43,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import signal
 import subprocess
@@ -47,6 +53,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ..domain.deadline import compute_bounds
+from ..domain.execution_result import TerminalHandoff
 from ..domain.start_request import ExecutionPlan
 from ..ports.process_host import SpawnRejected
 from . import platform_caps
@@ -243,6 +251,12 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
                                     ).encode("utf-8"))
         return 2
 
+    start_mono = time.monotonic()
+    start_wall = time.time()
+    deadline_hit = threading.Event()
+    killed = threading.Event()
+    externally_terminated = threading.Event()
+
     stdin_bytes = base64.b64decode(plan["stdin_b64"])
 
     def feed_stdin() -> None:
@@ -276,17 +290,51 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         except (OSError, ProcessLookupError):
             pass
 
+    def kill_group() -> None:
+        try:
+            os.killpg(os.getpgid(child.pid), signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+
     def on_channel_close() -> None:
         channel_closed.wait()
+        externally_terminated.set()
         terminate_group()
 
     threading.Thread(target=on_channel_close, daemon=True).start()
+
+    # Terminación graduada por plazo (D-M2-3). El watchdog no toca el reloj de
+    # pared: los plazos se miden en monotónico (§7.1, nunca se cruzan).
+    bounds = compute_bounds(int(plan["deadline_eff_ms"]),
+                            int(plan.get("termination_grace_ms", 2000)))
+
+    def deadline_watchdog() -> None:
+        soft_at = start_mono + bounds.soft_termination_after_start_ms / 1000.0
+        hard_at = start_mono + bounds.hard_deadline_after_start_ms / 1000.0
+        while time.monotonic() < soft_at:
+            if child.poll() is not None:
+                return
+            time.sleep(0.02)
+        if child.poll() is not None:
+            return
+        deadline_hit.set()
+        terminate_group()          # TERM al grupo
+        while time.monotonic() < hard_at:
+            if child.poll() is not None:
+                return
+            time.sleep(0.02)
+        if child.poll() is None:
+            killed.set()
+            kill_group()           # KILL al grupo
+
+    threading.Thread(target=deadline_watchdog, daemon=True).start()
 
     assert child.stdout is not None and child.stderr is not None
     credit_timeout_s = int(plan.get("credit_timeout_ms",
                                     DEFAULT_CREDIT_TIMEOUT_MS)) / 1000.0
     eof_drain_s = int(plan.get("eof_drain_timeout_ms",
                                DEFAULT_EOF_DRAIN_TIMEOUT_MS)) / 1000.0
+    post_kill_drain_s = int(plan.get("post_kill_drain_ms", 1000)) / 1000.0
     pump_out = _StreamPump(_STREAM_OUT, child.stdout,
                            int(plan["max_stdout_bytes"]), emit,
                            credits[_STREAM_OUT], credit_timeout_s,
@@ -306,11 +354,17 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
     # Esperar al proceso principal: los pumps drenan, así que `wait` no puede
     # bloquearse contra un pipe lleno.
     returncode = child.wait()
+    # Recolección del proceso principal: este instante fija los tiempos
+    # (ADR-009). Lo que venga después sólo es latencia de entrega.
+    collected_mono = time.monotonic()
+    duration_ms = int((collected_mono - start_mono) * 1000)
+    end_wall = time.time()
 
-    # Cota de EOF (H2). Un nieto que hereda y RETIENE los pipes impide el EOF
-    # aunque el principal ya salió; sin esta cota la espera es ilimitada.
+    # Cota de EOF. Tras KILL rige `post_kill_drain_ms` (D-M2-3); en el resto
+    # de los casos, la cota general de drenaje. Son hechos distintos.
     eof_drain_forced_close = False
-    deadline = time.monotonic() + eof_drain_s
+    drain_budget_s = post_kill_drain_s if killed.is_set() else eof_drain_s
+    deadline = time.monotonic() + drain_budget_s
     for h in hilos:
         h.join(timeout=max(0.0, deadline - time.monotonic()))
     if any(h.is_alive() for h in hilos):  # noqa: E501
@@ -325,6 +379,13 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         # Los pumps son daemon y los descriptores se cierran al salir el
         # proceso, que es inmediato tras emitir el terminal.
         eof_drain_forced_close = True
+    drain_elapsed_ms = int((time.monotonic() - collected_mono) * 1000)
+
+    # Muestra final de pared: sólo alimenta `finished_at_wall`. Si no es
+    # finita o regresa respecto de la inicial, se declara fallo de supervisión
+    # y NO se fabrican tiempos (D-M2-3).
+    wall_ok = (isinstance(end_wall, float) and math.isfinite(end_wall)
+               and end_wall >= start_wall)
     terminal = {
         "returncode": returncode,
         "stdout_retained": pump_out.retained,
@@ -346,6 +407,21 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         # se agotó la espera de EOF. Nombres casi iguales para hechos distintos
         # invitan a confundirlos (R2).
         "eof_drain_forced_close": eof_drain_forced_close,
+        # INC-M2-4: plazo y terminación graduada.
+        "deadline_effective_ms": bounds.deadline_effective_ms,
+        "termination_grace_ms": bounds.termination_grace_ms,
+        "useful_runtime_ms": bounds.useful_runtime_ms,
+        "soft_termination_after_start_ms": bounds.soft_termination_after_start_ms,
+        "hard_deadline_after_start_ms": bounds.hard_deadline_after_start_ms,
+        "post_kill_drain_elapsed_ms": drain_elapsed_ms if killed.is_set() else 0,
+        "post_kill_forced_pipe_close": (
+            1 if (killed.is_set() and eof_drain_forced_close) else 0),
+        "deadline_hit": deadline_hit.is_set(),
+        "killed": killed.is_set(),
+        "externally_terminated": externally_terminated.is_set(),
+        "duration_monotonic_ms": duration_ms,
+        "finished_at_wall": end_wall if wall_ok else None,
+        "wall_sample_invalid": not wall_ok,
     }
     with write_lock:
         _write_frame(frames_out, b"T", b"-",
@@ -367,6 +443,7 @@ class SupervisedAction:
     terminal: Optional[dict[str, object]] = None
     failed_detail: Optional[str] = None
     termination_requested: bool = False
+    validity_bound: bool = False
     done: threading.Event = field(default_factory=threading.Event)
     max_frame_seen: int = 0
 
@@ -377,15 +454,23 @@ class PosixSupervisorHost:
     def __init__(self, *, subreaper_requested: bool = True,
                  credit_timeout_ms: int = DEFAULT_CREDIT_TIMEOUT_MS,
                  eof_drain_timeout_ms: int = DEFAULT_EOF_DRAIN_TIMEOUT_MS,
+                 termination_grace_ms: int = 2000,
+                 post_kill_drain_ms: int = 1000,
                  ) -> None:
         for name, value in (("credit_timeout_ms", credit_timeout_ms),
-                            ("eof_drain_timeout_ms", eof_drain_timeout_ms)):
+                            ("eof_drain_timeout_ms", eof_drain_timeout_ms),
+                            ("post_kill_drain_ms", post_kill_drain_ms)):
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name}: entero exacto positivo requerido")
         self._caps = platform_caps.detect()
         self._subreaper_requested = subreaper_requested
+        if type(termination_grace_ms) is not int or termination_grace_ms < 0:
+            raise ValueError("termination_grace_ms: entero exacto no negativo")
         self._credit_timeout_ms = credit_timeout_ms
         self._eof_drain_timeout_ms = eof_drain_timeout_ms
+        self._termination_grace_ms = termination_grace_ms
+        self._post_kill_drain_ms = post_kill_drain_ms
+        self._validity_bound: dict[str, bool] = {}
         self._actions: dict[str, SupervisedAction] = {}
         self._lock = threading.Lock()
 
@@ -393,7 +478,8 @@ class PosixSupervisorHost:
     def caps(self) -> platform_caps.PlatformCaps:
         return self._caps
 
-    def spawn(self, plan: ExecutionPlan, *, deadline_eff_ms: int) -> str:
+    def spawn(self, plan: ExecutionPlan, *, deadline_eff_ms: int,
+              validity_bound: bool = False) -> str:
         payload = json.dumps({
             "command_absolute": plan.command_absolute,
             "args": list(plan.args),
@@ -408,6 +494,8 @@ class PosixSupervisorHost:
                                     and self._caps.subreaper_available),
             "credit_timeout_ms": self._credit_timeout_ms,
             "eof_drain_timeout_ms": self._eof_drain_timeout_ms,
+            "termination_grace_ms": self._termination_grace_ms,
+            "post_kill_drain_ms": self._post_kill_drain_ms,
         }).encode("utf-8")
 
         plan_r, plan_w = os.pipe()
@@ -441,6 +529,7 @@ class PosixSupervisorHost:
 
         handle_ref = f"{os.urandom(8).hex()}"
         action = SupervisedAction(handle_ref=handle_ref, process=supervisor)
+        action.validity_bound = validity_bound
         with self._lock:
             self._actions[handle_ref] = action
         threading.Thread(target=self._collect, args=(action,), daemon=True).start()
@@ -529,6 +618,17 @@ class PosixSupervisorHost:
         with self._lock:
             self._actions.pop(handle_ref, None)
         return action
+
+    def collect_terminal(self, handle_ref: str, *,
+                         timeout: float) -> Optional[TerminalHandoff]:
+        """Vista del puerto sobre el traspaso terminal. `await_terminal`
+        conserva la vista rica del adaptador para su propia caracterización."""
+        action = self.await_terminal(handle_ref, timeout=timeout)
+        if action is None or action.terminal is None:
+            return None
+        return TerminalHandoff(raw=dict(action.terminal),
+                               stdout=bytes(action.stdout),
+                               stderr=bytes(action.stderr))
 
     @property
     def pending_actions(self) -> int:

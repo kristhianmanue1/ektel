@@ -359,5 +359,75 @@ class RegresionRondaAdversarialTests(unittest.TestCase):
                          "entregar el terminal debe soltar el registro")
 
 
+class TerminacionGraduadaTests(SupervisorCase):
+    """G-M2-09 con procesos reales: TERM -> KILL y drenaje post-KILL."""
+
+    def test_proceso_que_obedece_term_no_llega_a_kill(self) -> None:
+        host = PosixSupervisorHost(termination_grace_ms=2000)
+        script = "import time,sys\nsys.stdout.write('ok');sys.stdout.flush()\ntime.sleep(60)\n"
+        ref = host.spawn(plan(script), deadline_eff_ms=1500)
+        a = host.await_terminal(ref, timeout=40)
+        assert a is not None and a.terminal is not None
+        t = a.terminal
+        self.assertTrue(t["deadline_hit"])
+        self.assertFalse(t["killed"], "no debe escalar a KILL si TERM basto")
+        self.assertEqual(t["returncode"], -15)
+
+    def test_proceso_que_ignora_term_recibe_kill(self) -> None:
+        host = PosixSupervisorHost(termination_grace_ms=600,
+                                   post_kill_drain_ms=500)
+        script = ("import signal,time,sys\n"
+                  "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                  "sys.stdout.write('ignoro');sys.stdout.flush()\n"
+                  "time.sleep(60)\n")
+        ref = host.spawn(plan(script), deadline_eff_ms=1800)
+        a = host.await_terminal(ref, timeout=40)
+        assert a is not None and a.terminal is not None
+        t = a.terminal
+        self.assertTrue(t["deadline_hit"])
+        self.assertTrue(t["killed"])
+        self.assertEqual(t["returncode"], -9)
+
+    def test_las_cotas_publicadas_siguen_las_formulas(self) -> None:
+        host = PosixSupervisorHost(termination_grace_ms=700)
+        ref = host.spawn(plan("import sys;sys.stdout.write('x')"),
+                         deadline_eff_ms=2500)
+        a = host.await_terminal(ref, timeout=40)
+        assert a is not None and a.terminal is not None
+        t = a.terminal
+        self.assertEqual(t["deadline_effective_ms"], 2500)
+        self.assertEqual(t["termination_grace_ms"], 700)
+        self.assertEqual(t["useful_runtime_ms"], 1800)
+        self.assertEqual(t["soft_termination_after_start_ms"], 1800)
+        self.assertEqual(t["hard_deadline_after_start_ms"], 2500)
+
+    def test_el_plazo_post_kill_no_amplia_el_deadline(self) -> None:
+        """`post_kill_drain_ms` solo acota la latencia de entrega."""
+        host = PosixSupervisorHost(termination_grace_ms=400,
+                                   post_kill_drain_ms=800)
+        script = ("import signal,time\n"
+                  "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                  "time.sleep(60)\n")
+        import time as _t
+        t0 = _t.monotonic()
+        ref = host.spawn(plan(script), deadline_eff_ms=1200)
+        a = host.await_terminal(ref, timeout=40)
+        transcurrido = _t.monotonic() - t0
+        assert a is not None and a.terminal is not None
+        self.assertLess(a.terminal["duration_monotonic_ms"], 3000,
+                        "la duracion mide hasta recolectar el principal")
+        self.assertLess(transcurrido, 10.0)
+
+    def test_proceso_rapido_no_dispara_plazo(self) -> None:
+        host = PosixSupervisorHost()
+        ref = host.spawn(plan("import sys;sys.stdout.write('fin')"),
+                         deadline_eff_ms=30000)
+        a = host.await_terminal(ref, timeout=40)
+        assert a is not None and a.terminal is not None
+        self.assertFalse(a.terminal["deadline_hit"])
+        self.assertFalse(a.terminal["killed"])
+        self.assertEqual(a.terminal["returncode"], 0)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

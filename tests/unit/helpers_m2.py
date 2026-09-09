@@ -70,7 +70,8 @@ class FakeProcessHost:
         self.terminations: list[str] = []
         self._n = 0
 
-    def spawn(self, plan: Any, *, deadline_eff_ms: int) -> str:
+    def spawn(self, plan: Any, *, deadline_eff_ms: int,
+              validity_bound: bool = False) -> str:
         from src.ports.process_host import SpawnRejected
         if self.reject:
             raise SpawnRejected("host_rejected")
@@ -84,6 +85,11 @@ class FakeProcessHost:
 
     def request_termination(self, handle_ref: str) -> None:
         self.terminations.append(handle_ref)
+
+    def collect_terminal(self, handle_ref: str, *,
+                         timeout: float) -> Any:
+        """El doble no supervisa procesos: no hay traspaso terminal propio."""
+        return None
 
 
 class HostileStore:

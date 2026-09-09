@@ -18,6 +18,9 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from typing import Optional
+
+from ..domain.execution_result import TerminalHandoff
 from ..domain.start_request import ExecutionPlan
 
 
@@ -34,7 +37,8 @@ class SpawnRejected(Exception):
 class ProcessHost(Protocol):
     """Creación y terminación de procesos supervisados, todo local."""
 
-    def spawn(self, plan: ExecutionPlan, *, deadline_eff_ms: int) -> str:
+    def spawn(self, plan: ExecutionPlan, *, deadline_eff_ms: int,
+              validity_bound: bool = False) -> str:
         """Crea el proceso bajo el plan inmutable y devuelve `handle_ref`
         (16 hex). Lanza `SpawnRejected` si falla **antes** de crearlo.
 
@@ -46,4 +50,10 @@ class ProcessHost(Protocol):
     def request_termination(self, handle_ref: str) -> None:
         """Terminación best-effort del grupo observado. No promete muerte
         universal ni recuperación de procesos escapados."""
+        ...
+
+    def collect_terminal(self, handle_ref: str, *,
+                         timeout: float) -> Optional[TerminalHandoff]:
+        """Espera **acotada** del traspaso terminal. `None` si no llegó dentro
+        del plazo: ausencia honesta, nunca un resultado fabricado."""
         ...
