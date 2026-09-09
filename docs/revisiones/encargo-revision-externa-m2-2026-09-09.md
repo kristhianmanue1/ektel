@@ -10,21 +10,35 @@ sobre el **código real**. Ninguna ronda propia del ejecutor la sustituye.
 Todos los revisores trabajan sobre **exactamente la misma raíz**. Un revisor
 que evalúe otro árbol no produce evidencia comparable.
 
+**La identidad congelada es el MANIFEST-ROOT, no un SHA de commit.**
+
 | Qué | Valor |
 |---|---|
-| Commit (raíz congelada) | `55579bd8337efd20fb2a799d5476926c90795a49` |
+| **MANIFEST-ROOT** (identidad de código) | `3e2110174ebe3b1365fdee0ed568675efa24c3cde67d696a040ff190d39524ae` |
 | Manifiesto | `docs/evidencia/manifest-m2-sha256.txt`, 95 entradas |
-| MANIFEST-ROOT (sha256 del manifiesto) | `3e2110174ebe3b1365fdee0ed568675efa24c3cde67d696a040ff190d39524ae` |
 | Cobertura del manifiesto | `src/`, `tests/`, `scripts/`, `contracts/`. **No** `docs/` |
+| Primer commit con esta identidad | `55579bd8337efd20fb2a799d5476926c90795a49` |
+| Diff M2 a revisar | `git diff 4beb7ebe..HEAD -- src tests scripts` |
+
+**Por qué la identidad no es un SHA.** Un commit no puede contener su propio
+hash: fijar el SHA dentro del documento exige un commit posterior, que produce
+otro SHA, y así indefinidamente. Se intentó y se corrigió. Como el manifiesto
+**no cubre `docs/`**, cualquier commit documental posterior deja el
+MANIFEST-ROOT **intacto** — y eso es precisamente lo que lo hace utilizable
+como identidad congelada: es estable frente a la documentación y sensible a
+cualquier cambio de código.
+
+Un revisor que reproduzca el MANIFEST-ROOT está revisando exactamente el mismo
+código, con independencia del commit en que se sitúe.
 
 ### 1.1 Verificación exigida antes de empezar
 
 Cada revisor **debe** comprobar por su cuenta, y declarar el resultado:
 
 ```bash
-git rev-parse HEAD          # debe coincidir con la raíz congelada
 git status --porcelain      # debe estar vacío
-shasum -a 256 docs/evidencia/manifest-m2-sha256.txt   # MANIFEST-ROOT
+shasum -a 256 docs/evidencia/manifest-m2-sha256.txt   # debe dar el MANIFEST-ROOT
+git merge-base --is-ancestor 55579bd8337efd20fb2a799d5476926c90795a49 HEAD   && echo "descendiente de la raiz congelada"
 ```
 
 Y regenerar el manifiesto para confirmar **diff cero**:
@@ -40,7 +54,8 @@ Y regenerar el manifiesto para confirmar **diff cero**:
 ```
 
 Un revisor que no pueda reproducir el MANIFEST-ROOT **debe detenerse y
-reportarlo**, no continuar sobre un árbol distinto.
+reportarlo**, no continuar sobre un árbol distinto. Si el MANIFEST-ROOT difiere,
+el código difiere: no es una discrepancia documental que pueda ignorarse.
 
 ## 2. Independencia
 
@@ -68,7 +83,6 @@ Idéntico para los tres:
 | Caracterización por plataforma | `docs/evidencia/caracterizacion-m2-{darwin,linux}-2026-09-09.md` |
 | Claims y no-claims | `docs/claims-y-no-claims.md` |
 | Manifiesto | `docs/evidencia/manifest-m2-sha256.txt` |
-| Diff M2 completo | `git diff 4beb7ebe..55579bd8337efd20fb2a799d5476926c90795a49 -- src tests scripts` |
 | Borrador de enmienda G-M2-12 | `docs/propuestas/borrador-enmienda-g-m2-12-2026-09-09.md` |
 
 ## 4. Obligaciones de falsación
