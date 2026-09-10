@@ -1,10 +1,9 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: adjudicación arquitectónica post-Astra COMPLETE / DOCUMENTARY-ONLY.
-R13 fuerte BLOCKED-BY-NORMATIVE-GAP; R13/R14 permanecen NOT-SATISFIED.
-R15/R16 AUTHORIZABLE-WITHIN-M2, no implementadas. Ratificación normativa
-HUMAN-NORMATIVE-DECISION-REQUIRED; tercera acción correctiva
-PENDING-AUTHORIZATION. G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN.
+**Estado: ratificación humana R13-STRONG/R15/R16 asentada; tercera corrección
+R15/R16 implementada, pendiente de re-verificación externa.
+R13 fuerte BLOCKED-BY-NORMATIVE-GAP; R13/R14 conservan NOT-SATISFIED.
+G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN.
 M3 = BLOCKED.**
 
 Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`.
@@ -50,6 +49,14 @@ candidato local; aislamiento fuerte queda fuera, sin asignarlo a M3.
 
 MANIFEST-ROOT vigente verificado y preservado:
 `9a2e3d52ad0c807335bc6f0a9cc8384a337c0784f4e91f124542aaba60080c95`.
+
+La identidad anterior corresponde al acto documental post-Astra, sin cambios
+de implementación entonces. La decisión humana posterior
+[ratifica y autoriza R15/R16](../../decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md).
+La tercera corrección separa writer terminal, rechaza handles incompletos y
+vincula Start a evidencia efímera producida por Admission. No ofrece aislamiento
+frente a introspección. Nuevo MANIFEST-ROOT de implementación:
+`b59553bcb6d4ab696357354ba63ffbae398609ea48426610b447d43bec660588`.
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
@@ -145,10 +152,10 @@ R12                       = SATISFIED
 R13                       = NOT-SATISFIED
 R13-STRONG                = BLOCKED-BY-NORMATIVE-GAP
 R14                       = NOT-SATISFIED
-R15                       = AUTHORIZABLE-WITHIN-M2
-R16                       = AUTHORIZABLE-WITHIN-M2
-normative_ratification    = HUMAN-NORMATIVE-DECISION-REQUIRED
-corrective_action_3       = PENDING-AUTHORIZATION
+R15                       = IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION
+R16                       = IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION
+normative_ratification    = RATIFIED-BY-HUMAN
+corrective_action_3       = IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION
 
 G-M2-15 = CORRECTIVE-FIX-AND-RETRY
 M2       = OPEN
@@ -157,8 +164,8 @@ M3       = BLOCKED
 
 G-M2-01, G-M2-05, G-M2-06, G-M2-10, G-M2-11, G-M2-12, G-M2-14 y G-M2-15
 permanecen con evidencia de la re-verificación 2. No se promueve ningún gate.
-La adjudicación arquitectónica no equivale a implementación ni a aceptación
-del diff futuro. El siguiente acto separado es la ratificación normativa
-identificada en su §9 y, posteriormente, la autorización concreta de la
-tercera acción correctiva. R12 permanece satisfecha por la evidencia existente;
+La adjudicación arquitectónica no equivale a aceptación del diff posterior.
+Su ratificación y autorización ya constan en el acto humano enlazado. La tercera
+corrección requiere re-verificación externa; las pruebas del implementador no
+adjudican conformidad. R12 permanece satisfecha por la evidencia existente;
 R13/R14 no se cierran mediante el nuevo alcance propuesto de R15/R16.

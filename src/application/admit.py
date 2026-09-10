@@ -43,6 +43,8 @@ pared para vigencia, monotónico para plazos; nunca se cruzan).
 """
 from __future__ import annotations
 
+import threading
+
 import math
 import time
 from pathlib import Path
@@ -171,9 +173,36 @@ class AdmissionService:
         self._mono_clock = mono_clock
         # Extensión aditiva M2 (A-M2-2): opt-in. `None` conserva exactamente
         # el comportamiento observable de M1.
-        if m2_config is not None and not isinstance(m2_config, M2Config):
+        if m2_config is not None and type(m2_config) is not M2Config:
             raise ValueError("m2_config debe ser M2Config o None")
         self._m2_config = m2_config
+        # R16: evidencia de emisión local, sin descriptor ni persistencia.
+        # Sólo admit() escribe; Start recibe lookup, nunca registro público.
+        self._issuance_lock = threading.RLock()
+        self._issuances: dict[str, tuple[int, str]] = {}
+        self._start_owner: Optional[object] = None
+
+    def _claim_start(self) -> object:
+        with self._issuance_lock:
+            if self._start_owner is not None:
+                self._issuances.clear()  # nueva instancia: no hereda provenance
+            self._start_owner = object()
+            return self._start_owner
+
+    def _issuance_fingerprint(self, token: str, owner: object,
+                              now: float) -> Optional[str]:
+        with self._issuance_lock:
+            if owner is not self._start_owner:
+                return None
+            evidence = self._issuances.get(token)
+            if evidence is None or now >= evidence[0]:
+                return None
+            return evidence[1]
+
+    def _forget_issuance(self, token: str, owner: object) -> None:
+        with self._issuance_lock:
+            if owner is self._start_owner:
+                self._issuances.pop(token, None)
 
     @property
     def active_key_id(self) -> str:
@@ -192,6 +221,26 @@ class AdmissionService:
         return self._m2_config.fingerprint
 
     def admit(self, raw: bytes) -> AdmissionOutcome:
+        """M1 intacta; M2 reserva evidencia antes de aceptar otra emisión.
+
+        El lock serializa emisión/capacidad, no la ejecución de acciones.
+        Rechazar por saturación no reserva nonce ni publica un token huérfano.
+        """
+        if self._m2_config is None:
+            return self._admit(raw)
+        with self._issuance_lock:
+            now = self._read_clock(self._wall_clock)
+            if now is None:
+                return _rejected(REASON_CAPABILITY_REJECTED,
+                                 "wall_clock_unavailable", retryable=True)
+            self._issuances = {t: e for t, e in self._issuances.items()
+                               if now < e[0]}
+            if len(self._issuances) >= self._m2_config.max_concurrent_actions:
+                return _rejected(REASON_CAPABILITY_REJECTED,
+                                 "m2:issuance_capacity", retryable=True)
+            return self._admit(raw)
+
+    def _admit(self, raw: bytes) -> AdmissionOutcome:
         """Admite un `ActionRequest` (bytes wire) según el orden §6.2."""
         # 1. Capa de contrato del documento exterior (§5.8).
         result = contract_layer.parse_action_request(raw)
@@ -267,10 +316,18 @@ class AdmissionService:
                       else REASON_POLICY_UNAVAILABLE)
             return _rejected(reason, f"policy:{policy_error}")
 
+        token = build_admission_token(
+            self._operator_key, cap.identity_digest, doc["action_id"],
+            int(cap.exp), cap.issuer_id)
+        if self._m2_config is not None:
+            evidence = (int(cap.exp), self._m2_config.fingerprint)
+            previous = self._issuances.get(token)
+            if previous is not None and previous != evidence:
+                return _rejected(REASON_CAPABILITY_REJECTED,
+                                 "m2:issuance_ambiguous")
+            self._issuances[token] = evidence
         return Admitted(
-            admitted_action=build_admission_token(
-                self._operator_key, cap.identity_digest, doc["action_id"],
-                int(cap.exp), cap.issuer_id),
+            admitted_action=token,
             identity_digest=cap.identity_digest,
             guarantee_plan=_guarantee_plan(doc.get("requested_guarantees", []),
                                            self._m2_config),

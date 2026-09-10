@@ -41,6 +41,8 @@ class CarreraPorElMismoTokenTests(unittest.TestCase):
             store=self.store, host=host,
             config=M2Config.build(max_concurrent_actions=hilos_n))
         request = distinct_start_request(1)
+        # Emisión real previa a la carrera; ningún hilo registra provenance.
+        svc._admission.admit(request.action_request_wire)
         resultados: list[object] = []
         lock = threading.Lock()
         barrera = threading.Barrier(hilos_n, timeout=30)
@@ -68,12 +70,13 @@ class CarreraPorElMismoTokenTests(unittest.TestCase):
         self.assertEqual(len(perdedores), hilos_n - 1)
         for p in perdedores:
             self.assertEqual(p.reason_code, REASON_CAPABILITY_REJECTED)
-            self.assertEqual(p.safe_detail, "cas:already_spent")
+            self.assertIn(p.safe_detail, ("cas:already_spent", "config:issuance_missing"))
 
     def test_reinicio_del_store_conserva_spent(self) -> None:
         host = FakeProcessHost()
         svc = make_start_service(store=self.store, host=host)
         request = distinct_start_request(2)
+        svc._admission.admit(request.action_request_wire)
         self.assertIsInstance(svc.start(request), Started)
         # Reiniciar el store: releer desde disco.
         self.store.close()
@@ -82,8 +85,10 @@ class CarreraPorElMismoTokenTests(unittest.TestCase):
             svc2 = make_start_service(store=reabierto, host=host)
             segundo = svc2.start(request)
             assert isinstance(segundo, StartFailed)
-            self.assertEqual(segundo.safe_detail, "cas:already_spent",
-                             "el estado spent debe sobrevivir al reinicio")
+            self.assertEqual(segundo.safe_detail, "config:issuance_missing")
+            self.assertEqual(reabierto.start_token_status(
+                host.spawns[0][0].identity_digest), "spent",
+                "R16 no sustituye la prueba de replay durable")
             self.assertEqual(len(host.spawns), 1)
         finally:
             reabierto.close()
@@ -93,11 +98,14 @@ class CarreraPorElMismoTokenTests(unittest.TestCase):
         host = FakeProcessHost()
         request = distinct_start_request(3)
         svc_a = make_start_service(store=self.store, host=host)
+        svc_a._admission.admit(request.action_request_wire)
         self.assertIsInstance(svc_a.start(request), Started)
         svc_b = make_start_service(store=self.store, host=host)
         segundo = svc_b.start(request)
         assert isinstance(segundo, StartFailed)
-        self.assertEqual(segundo.safe_detail, "cas:already_spent")
+        self.assertEqual(segundo.safe_detail, "config:issuance_missing")
+        self.assertEqual(self.store.start_token_status(
+            host.spawns[0][0].identity_digest), "spent")
         self.assertEqual(len(host.spawns), 1)
 
 

@@ -12,9 +12,10 @@ capacidad admitida para ese `action_id` y a la instancia del coordinador.
 propio objeto; al dejar de existir el handle termina también esa retención.
 Reiniciar el coordinador invalida todos sus handles.
 
-El estado terminal vive en una capability interna del coordinador asociada por
-identidad exacta al handle: el caller nunca recibe autoridad de depósito. Este
-objeto sólo muta el receipt y la marca de abandono (FIX-M2-R13).
+El estado terminal vive separado del writer interno del coordinador, asociado
+por identidad exacta al handle. Las interfaces consumidoras no entregan writer
+(FIX-M2-R15); no hay aislamiento contra introspección del intérprete compartido.
+Este objeto sólo muta el receipt y la marca de abandono.
 
 API EXPERIMENTAL (spec §16). stdlib-only.
 """
@@ -33,7 +34,7 @@ from .termination import (
 class ExecutionHandle:
     """Handle local del llamador. No serializable, no comparable por valor.
 
-    FIX-M2-R12/R13: el resultado terminal no forma parte de la superficie del
+    FIX-M2-R12/R15: el resultado terminal no forma parte de la superficie del
     handle. El coordinador conserva por separado el estado de lifecycle y
     exige identidad exacta de este objeto para `terminate`/`await_result`.
     """

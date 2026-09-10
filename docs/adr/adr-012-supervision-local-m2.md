@@ -1,5 +1,16 @@
 # ADR-012: Contrato local y topología de supervisión M2
 
+**Enmienda humana R15/R16, 2026-09-10:**
+[ratificación](../decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md).
+El writer terminal interno se separa de las interfaces consumidoras y recibe el
+handoff del Host confiable. Única transición terminal y como máximo una entrega;
+ausencia, cierre y resultado no se confunden; timeout/abandono no fabrican resultado.
+Se preservan lifetimes R12 y terminación legítima. El compromiso pre-CAS del Host
+queda ligado al mismo snapshot declarado por la emisión Admission y requerido por
+Start; no acredita por adelantado éxito del SO ni confunde gracia configurada con
+aplicada. N20 excluye aislamiento frente al intérprete compartido. No nuevo IPC,
+wire, persistencia, procesos de aislamiento ni M3 por esta enmienda.
+
 **Estado:** **aceptado y normativo** — Kristhian Manuel Jimenez Sanchez
 (`krisnova@hotmail.com`), 2026-08-28, mediante
 `docs/decisiones/aceptacion-adr-012-supervision-m2-2026-08-28.md`.

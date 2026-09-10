@@ -9,14 +9,16 @@
 
 **Estado del ciclo:** M0 y M1 cerrados (incluidas M1-R1 y M1-R2).
 **M2 AUTORIZADO e IMPLEMENTADO, pero ABIERTO**: los cinco incrementos están
-completos y **14 de 15 gates en verde**; falta **G-M2-15**, la revisión
-adversarial externa. **M3 no comienza hasta `M2 CLOSED`** por acta humana.
+completos; **G-M2-15 = CORRECTIVE-FIX-AND-RETRY**. R13 fuerte conserva gap;
+R15/R16 tienen ratificación humana y construcción autorizada, sin cierre de gate.
+**M3 no comienza hasta `M2 CLOSED`** por acta humana.
 Ningún tag ni release hasta que M3 cierre.
 
 ## Decisiones activas (vigentes)
 
 | Fecha | Decisión | Qué decide | Ruta |
 |---|---|---|---|
+| 10-09 | **Ratificación R13-STRONG/R15/R16** | No-claim de intérprete compartido; autoriza R15/R16, evidencia local acotada y fail-closed tras pérdida; sin cerrar M2 ni iniciar M3 | decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md |
 | 09-09 | **Enmienda G-M2-12** | Reconoce la incompatibilidad normativa del criterio original —exigía 16 GiB de payload que §2.2 excluye como presión extrema— y adopta **diez criterios conjuntivos**. Tras reevaluación individual, **G-M2-12 = VERDE**. Prohíbe afirmar que se probó materialmente 16 GiB. **NO** cierra M2 ni sustituye G-M2-15 | decisiones/enmienda-g-m2-12-2026-09-09.md |
 | 09-09 | **Autorización M2** | **M2 AUTORIZADO**, ligado al commit `4beb7ebe…`. Adopta A-M2-1..7 (SpawnFrontier aislar; `admit.py` aditivo; regresión M1 = SCOPE VIOLATION; terminación local y opaca; sin wire nuevo; semántica de revalidación congelada; evolución monotónica). **NO autoriza** M3, M4, tags ni releases | decisiones/autorizacion-m2-2026-09-09.md |
 | 08-09 | **Cierre F0-A** (AEC) | Veredicto `F0-A-CLOSED`; stop decision expresa: **NO autoriza F0-B/C/D**, no adopta AEC, no modifica el estado funcional de EKTEL | propuestas/aec-fase-0/f0-a/f0-a-verdict.md |
@@ -42,12 +44,12 @@ en `propuestas/` como provenance y no se reescriben.
 
 | Qué | Estado | Ruta |
 |---|---|---|
-| **Expediente G-M2-15** | **EN CURSO — 1 de 3 informes.** OpenAI GPT-5.6 Sol: `FIX-AND-RETRY`, 0 P0 y 5 P1, **sin reejecutar suites**. **Sin reconciliar**: no se corrige ni se promueve nada hasta los tres | revisiones/g-m2-15/ |
+| **Expediente G-M2-15** | Re-verificación 2 NOT-CONFORMING; adjudicación post-Astra y ratificación humana R15/R16. Tercera corrección sin promoción de gate | revisiones/g-m2-15/ |
 | Encargo de revisión externa (G-M2-15) | 3 familias, misma raíz, sin verse antes del primer veredicto; sin mayoría simple | revisiones/encargo-revision-externa-m2-2026-09-09.md |
 | Estado de evidencia por gate | 14 verdes, 1 pendiente | evidencia/estado-evidencia-m2-2026-09-09.md |
 | Caracterización Darwin arm64 (clase L) | 339 OK, 4 skips | evidencia/caracterizacion-m2-darwin-2026-09-09.md |
 | Caracterización Linux aarch64 (clase V) | 339 OK, 1 skip | evidencia/caracterizacion-m2-linux-2026-09-09.md |
-| Manifiesto — identidad de implementación | `MANIFEST-ROOT 3e211017…`, 95 entradas, regeneración diff cero | evidencia/manifest-m2-sha256.txt |
+| Manifiesto — identidad de implementación | R15/R16: `MANIFEST-ROOT b59553bc…`, 98 entradas; paquete de revisión identifica el commit exacto | evidencia/manifest-m2-sha256.txt |
 | Ronda adversarial propia sobre INC-M2-1..3 | 11 hallazgos, corregidos | revisiones/revision-adversarial-m2-inc1-3-2026-09-09.md |
 | Ronda adversarial propia sobre el FIX-AND-RETRY | 4 hallazgos, corregidos | revisiones/revision-adversarial-m2-fix-retry-2026-09-09.md |
 

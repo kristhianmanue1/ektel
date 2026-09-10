@@ -1,5 +1,14 @@
 # ADR-001: Alcance y modelo de amenaza M0–M3
 
+**Enmienda humana M2, 2026-09-10:**
+[ratificación R13-STRONG/R15/R16](../decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md).
+Para R15/R16 se confía en coordinador, Admission/Start y Host autorizados; se
+mantienen hostiles todas las entradas y secuencias públicas. El intérprete Python
+compartido no es una frontera de seguridad (N20). Se excluye su introspección o
+modificación arbitraria, sin excluir composiciones incoherentes ni tipos hostiles
+de los rechazos exigibles. R13 fuerte sigue no satisfecha y bloqueada por gap;
+ningún aislamiento futuro queda autorizado ni asignado a M3.
+
 **Estado:** **aceptado** — Kristhian Manuel Jimenez Sanchez (krisnova@hotmail.com), 2026-08-19. Normativo; aún no autoriza implementación por sí solo (la autorización de M0 es un acto separado, propuesta §21.6).
 
 **Fecha:** 2026-08-19.

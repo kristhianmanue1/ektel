@@ -1,5 +1,15 @@
 # ADR-011: Handoff de admisión hacia `start`
 
+**Enmienda humana R16, 2026-09-10:**
+[ratificación](../decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md).
+M2 exige además evidencia efímera y acotada de emisión creada por el Admission
+reconocido, ligada al perfil que declaró. Lookup y cotejo con Start/Host ocurren
+antes del CAS/spawn; caller no registra provenance. Token v1 y StartRequest no
+cambian; tampoco revalidación pura, ReplayStore ni orden CAS→spawn. Tras reinicio,
+token/request sin esa evidencia no bastan: fail-closed. No se reconstruye el perfil
+histórico ni se persiste descriptor/evidencia. Esta condición adicional ratificada
+no sustituye el handoff por un objeto ni promete igualdad de bytes originales.
+
 **Estado:** **aceptado y normativo** — Kristhian Manuel Jimenez Sanchez
 (`krisnova@hotmail.com`), 2026-08-28, mediante
 `docs/decisiones/aceptacion-adr-011-handoff-2026-08-28.md`.

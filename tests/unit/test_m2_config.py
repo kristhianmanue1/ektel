@@ -7,6 +7,8 @@ consumir tokens** (D-M2-5(a)).
 """
 from __future__ import annotations
 
+from tests.unit.helpers_m2 import make_m2_admission, start_with_issuance
+
 import sys
 import unittest
 from pathlib import Path
@@ -284,6 +286,7 @@ class AutoridadUnicaTests(unittest.TestCase):
             replay_store=store, process_host=host, operator_key=TEST_KEY,
             active_key_id=TEST_KEY_ID, config=start_cfg,
             declared_config_fingerprint=admission.m2_config_fingerprint,
+            admission_service=admission,
             wall_clock=lambda: float(NOW))
         out = svc.start(StartRequest(
             admitted_action=token, action_request_wire=raw))
@@ -305,9 +308,9 @@ class AutoridadUnicaTests(unittest.TestCase):
         svc = StartService(
             replay_store=MemoryReplayStore(), process_host=host,
             operator_key=TEST_KEY, active_key_id=TEST_KEY_ID, config=cfg,
-            declared_config_fingerprint=cfg.fingerprint,
+            declared_config_fingerprint=cfg.fingerprint, admission_service=make_m2_admission(cfg),
             wall_clock=lambda: float(NOW))
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         self.assertIsInstance(out, StartFailed)
         assert isinstance(out, StartFailed)
         self.assertEqual(out.safe_detail, "config:host_fingerprint_missing")
@@ -325,9 +328,9 @@ class AutoridadUnicaTests(unittest.TestCase):
         svc = StartService(
             replay_store=MemoryReplayStore(), process_host=host,
             operator_key=TEST_KEY, active_key_id=TEST_KEY_ID, config=cfg,
-            declared_config_fingerprint=cfg.fingerprint,
+            declared_config_fingerprint=cfg.fingerprint, admission_service=make_m2_admission(cfg),
             wall_clock=lambda: float(NOW))
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         self.assertIsInstance(out, StartFailed)
         assert isinstance(out, StartFailed)
         self.assertEqual(out.safe_detail, "config:host_fingerprint_mismatch")
@@ -347,9 +350,9 @@ class AutoridadUnicaTests(unittest.TestCase):
         svc = StartService(
             replay_store=store, process_host=host, operator_key=TEST_KEY,
             active_key_id=TEST_KEY_ID, config=cfg,
-            declared_config_fingerprint=cfg.fingerprint,
+            declared_config_fingerprint=cfg.fingerprint, admission_service=make_m2_admission(cfg),
             wall_clock=lambda: float(NOW))
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         self.assertIsInstance(out, StartFailed)
         assert isinstance(out, StartFailed)
         self.assertEqual(out.safe_detail, "config:host_fingerprint_missing")

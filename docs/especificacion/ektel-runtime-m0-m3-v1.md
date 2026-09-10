@@ -1,5 +1,14 @@
 # Especificación ektel — runtime mínimo M0–M3, v1.2
 
+**Enmienda humana local M2 (2026-09-10), §§8/12/13/17:**
+[R13-STRONG/R15/R16](../decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md).
+Se adopta N20: no aislamiento frente al intérprete Python compartido. Bajo
+composición confiable, el consumidor no recibe writer terminal; transición única
+y como máximo una entrega, sin fabricar resultado ante ausencia. Start requiere
+evidencia local acotada del perfil de la emisión Admission; ausencia tras reinicio
+falla cerrado antes del CAS. Se coteja compromiso del Host, no éxito futuro del SO.
+Token/StartRequest/wire y replay durable permanecen; no se promueven gates ni M3.
+
 **Estado:** **adoptada** — consensuada por el dueño el 2026-08-20
 (`docs/decisiones/consenso-especificacion-v1-2-2026-08-20.md`); M0 autorizado
 por `docs/decisiones/autorizacion-m0-2026-08-20.md`. Toda enmienda posterior

@@ -1,5 +1,14 @@
 # Paquete de preparación para la decisión sobre M2
 
+**Enmienda posterior R15/R16, 2026-09-10:**
+[decisión humana](../decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md).
+Los criterios de la adjudicación arquitectónica R15/R16 se añaden a
+G-M2-01/02/05/06/10/11/12/14/15: provenance pre-CAS, separación writer,
+rechazo de handles hostiles, reinicio sin evidencia, cotas/lifecycle y regresión.
+No modifican la pureza ni el CAS de G-M2-02/05. R13 fuerte conserva su gap;
+su claim no se sustituye por una prueba de aislamiento de Python. Ningún gate
+se promueve por esta enmienda; la corrección requiere re-verificación externa.
+
 **Fecha:** 2026-08-28.
 
 **Estado:** **decisiones resueltas documentalmente — NO es autorización de

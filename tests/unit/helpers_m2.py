@@ -186,6 +186,15 @@ class HostileStore:
         return self._status
 
 
+def make_m2_admission(config: Any) -> Any:
+    from src.application.admit import AdmissionService
+    from .helpers_m1 import MemoryReplayStore
+    return AdmissionService(
+        replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+        operator_key=TEST_KEY, m2_config=config,
+        wall_clock=lambda: float(NOW))
+
+
 def make_start_service(store: Any = None, host: Any = None,
                        config: Any = None, now: float | None = None) -> Any:
     """Construye un `StartService` con relojes y dobles deterministas."""
@@ -202,10 +211,25 @@ def make_start_service(store: Any = None, host: Any = None,
         operator_key=TEST_KEY,
         active_key_id=TEST_KEY_ID,
         config=profile,
+        admission_service=make_m2_admission(profile),
         declared_config_fingerprint=profile.fingerprint,
         skew_tolerance_s=30.0,
         wall_clock=(lambda: float(NOW) if now is None else now),
     )
+
+
+def start_with_issuance(svc: Any, request: StartRequest) -> Any:
+    """Fixture explícita: emitir por Admission M2 antes de ejercitar Start.
+
+    No registra fingerprints ni altera tokens: la emisión genuina debe producir
+    el mismo token. Los tests negativos de provenance llaman start directamente.
+    Un replay de admisión conserva el token presentado para probar su rechazo.
+    """
+    from src.domain.outcomes import Admitted
+    out = svc._admission.admit(request.action_request_wire)
+    if isinstance(out, Admitted):
+        assert out.admitted_action == request.admitted_action
+    return svc.start(request)
 
 
 def distinct_start_request(n: int) -> StartRequest:

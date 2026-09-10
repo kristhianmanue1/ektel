@@ -68,6 +68,7 @@ from ..domain.termination import (
 from ..ports.process_host import ProcessHost, SpawnRejected
 from ..ports.replay_store import ConsumeOutcome, ReplayStore
 from .config import M2Config
+from .admit import AdmissionService
 
 
 def _failed(reason: str, detail: str = "") -> StartFailed:
@@ -107,52 +108,18 @@ class _SlotPool:
 
 
 class _HandleRecord:
-    """Estado terminal privado, separado del handle público y del runtime.
-
-    Esta referencia es la capability interna de depósito de FIX-M2-R13. Sólo
-    el vigilante la recibe; datos equivalentes o una referencia pública al
-    servicio no permiten reconstruirla.
-    """
+    """Vista consumidora R15, sin writer. No es aislamiento de seguridad."""
 
     __slots__ = ("handle_ref", "_lock", "_ready", "_result", "_closed",
-                 "_consumed", "_deposit_authority")
+                 "_consumed")
 
-    def __init__(self, handle_ref: str, deposit_authority: object) -> None:
+    def __init__(self, handle_ref: str) -> None:
         self.handle_ref = handle_ref
         self._lock = threading.Lock()
         self._ready = threading.Event()
         self._result: Optional[AwaitedExecution] = None
         self._closed = False
         self._consumed = False
-        self._deposit_authority: Optional[object] = deposit_authority
-
-    def deposit_once(self, result: object, authority: object) -> bool:
-        """Transición terminal tipada, interna y exactamente una vez."""
-        if (type(result) is not AwaitedExecution
-                or type(result.result) is not ExecutionResult
-                or type(result.stdout) is not bytes
-                or type(result.stderr) is not bytes):
-            return False
-        with self._lock:
-            if (authority is not self._deposit_authority
-                    or self._closed or self._consumed
-                    or self._result is not None):
-                return False
-            self._result = result
-            self._closed = True
-            self._deposit_authority = None
-        self._ready.set()
-        return True
-
-    def close_without_result(self, authority: object) -> bool:
-        """Cierre definitivo honesto; nunca reemplaza un terminal válido."""
-        with self._lock:
-            if authority is not self._deposit_authority:
-                return False
-            self._closed = True
-            self._deposit_authority = None
-        self._ready.set()
-        return True
 
     def wait(self, timeout: Optional[float]) -> bool:
         return self._ready.wait(timeout)
@@ -170,6 +137,28 @@ class _HandleRecord:
     def terminal_closed(self) -> bool:
         with self._lock:
             return self._closed
+
+
+def _terminal_pair(ref: str) -> tuple[_HandleRecord, Callable[[object], bool]]:
+    """Sólo el watcher recibe el writer; las tablas guardan la vista lectora."""
+    record = _HandleRecord(ref)
+
+    def finish(result: object) -> bool:
+        if result is not None and (
+                type(result) is not AwaitedExecution
+                or type(result.result) is not ExecutionResult
+                or type(result.stdout) is not bytes
+                or type(result.stderr) is not bytes):
+            return False
+        with record._lock:
+            if record._closed:
+                return False
+            record._result = result
+            record._closed = True
+        record._ready.set()
+        return True
+
+    return record, finish
 
 
 class _PendingCapability:
@@ -198,15 +187,22 @@ class StartService:
         active_key_id: str,
         config: Optional[M2Config] = None,
         declared_config_fingerprint: Optional[str] = None,
+        admission_service: Optional[AdmissionService] = None,
         skew_tolerance_s: float = 30.0,
         wall_clock: Callable[[], float] = time.time,
     ) -> None:
-        if not isinstance(config, M2Config) and config is not None:
+        if type(config) is not M2Config and config is not None:
             raise ValueError("config debe ser M2Config o None")
         self._config = config if config is not None else M2Config.build()
         self._replay_store = replay_store
         self._process_host = process_host
         self._declared_config_fingerprint = declared_config_fingerprint
+        # El string legado no confiere autoridad. Sólo evidencia de emisión.
+        if admission_service is not None and type(admission_service) is not AdmissionService:
+            raise ValueError("admission_service debe ser AdmissionService")
+        self._admission = admission_service
+        self._issuance_owner = (admission_service._claim_start()
+                                if admission_service is not None else object())
         self._operator_key = operator_key
         self._active_key_id = active_key_id
         self._skew_tolerance_s = skew_tolerance_s
@@ -281,25 +277,33 @@ class StartService:
 
     def start(self, request: object) -> StartOutcome:
         """Ejecuta la linealización de ADR-011 §2.6."""
-        # FIX-M2-R14: la composición se rechaza antes de revalidar, CAS o
-        # spawn. Un host sin acreditación no adquiere autoridad de ejecución.
-        configuration_error = self._check_configuration_authority(
-            self._declared_config_fingerprint, self._process_host)
-        if configuration_error is not None:
-            return _failed(REASON_START_FAILED, configuration_error)
-        if not isinstance(request, StartRequest):
+        # R16: revalidación pura y evidencia de emisión preceden al CAS/spawn.
+        if type(request) is not StartRequest:
             return _failed(REASON_CAPABILITY_REJECTED, "request:type")
+        try:
+            token, raw = request.admitted_action, request.action_request_wire
+        except AttributeError:
+            return _failed(REASON_CAPABILITY_REJECTED, "request:incomplete")
 
         # 1. Revalidación pura. Sin efectos: el token sigue sin gastar.
         now_wall = self._read_clock()
         if now_wall is None:
             return _failed(REASON_START_FAILED, "clock:unavailable")
         plan = revalidate_start_request(
-            request.admitted_action, request.action_request_wire,
+            token, raw,
             operator_key=self._operator_key, active_key_id=self._active_key_id,
             now_wall=now_wall, skew_tolerance_s=self._skew_tolerance_s)
         if isinstance(plan, StartFailed):
             return plan
+        declared = (self._admission._issuance_fingerprint(
+            token, self._issuance_owner, now_wall)
+            if self._admission is not None else None)
+        configuration_error = self._check_configuration_authority(
+            declared, self._process_host)
+        if configuration_error is not None:
+            return _failed(REASON_CAPABILITY_REJECTED
+                           if declared is None else REASON_START_FAILED,
+                           configuration_error)
 
         # 2. Slot y custodia de capability antes de cualquier efecto
         #    irreversible. Ambas saturaciones dejan el token sin consumir.
@@ -308,7 +312,7 @@ class StartService:
         if not self._pending_capacity.try_acquire():
             self._slots.release()
             return _failed(REASON_START_FAILED, "capacity:no_handle_slot")
-        return self._start_with_slot(plan)
+        return self._start_with_slot(plan, token)
 
     def _check_configuration_authority(
         self, declared: Optional[str], process_host: ProcessHost,
@@ -316,7 +320,7 @@ class StartService:
         expected = self._config.fingerprint
         if (type(declared) is not str or len(declared) != 64
                 or any(c not in "0123456789abcdef" for c in declared)):
-            return "config:declared_fingerprint_missing"
+            return "config:issuance_missing"
         if declared != expected:
             return "config:declared_fingerprint_mismatch"
         try:
@@ -330,7 +334,7 @@ class StartService:
             return "config:host_fingerprint_mismatch"
         return None
 
-    def _start_with_slot(self, plan: ExecutionPlan) -> StartOutcome:
+    def _start_with_slot(self, plan: ExecutionPlan, token: str) -> StartOutcome:
         # 3. Nueva muestra de reloj y recálculo, justo antes del CAS. Toda
         #    salida de esta sección libera el slot: aún no hay spawn.
         try:
@@ -361,48 +365,55 @@ class StartService:
             return _failed(REASON_CAPABILITY_REJECTED, "deadline:effective_zero")
 
         # 4. CAS durable.
-        cas_failure = self._consume(plan.identity_digest)
+        cas_failure, spent = self._consume(plan.identity_digest)
         if cas_failure is not None:
             self._slots.release()
             self._pending_capacity.release()
+            if self._admission is not None and spent:
+                self._admission._forget_issuance(token, self._issuance_owner)
             return cas_failure
 
         # 5. Spawn inmediato, sin dependencia externa intermedia. Desde aquí
         #    la liberación/retención del slot la gobierna `_spawn` y, tras el
         #    spawn, el vigilante único del terminal (FIX-M2-R3).
-        return self._spawn(plan, effective_ms, validity_bound)
+        try:
+            return self._spawn(plan, effective_ms, validity_bound)
+        finally:
+            # Nunca introducir el lock de Admission entre CAS y spawn.
+            if self._admission is not None:
+                self._admission._forget_issuance(token, self._issuance_owner)
 
-    def _consume(self, identity_digest: str) -> Optional[StartFailed]:
-        """CAS y reconciliación. `None` significa `CONSUMED`."""
+    def _consume(self, identity_digest: str) -> tuple[Optional[StartFailed], bool]:
+        """CAS: fallo opcional y conocimiento de spent, sin parsear diagnósticos."""
         try:
             result: object = self._replay_store.consume_start_token(identity_digest)
         except Exception:
             return self._reconcile(identity_digest, "cas:exception")
         if result is ConsumeOutcome.CONSUMED:
-            return None
+            return None, True
         if result is ConsumeOutcome.ALREADY_SPENT:
-            return _failed(REASON_CAPABILITY_REJECTED, "cas:already_spent")
+            return _failed(REASON_CAPABILITY_REJECTED, "cas:already_spent"), True
         # UNAVAILABLE, tipo desconocido o valor truthy: sin autoridad.
         return self._reconcile(identity_digest, "cas:unavailable")
 
-    def _reconcile(self, identity_digest: str, origin: str) -> StartFailed:
+    def _reconcile(self, identity_digest: str, origin: str) -> tuple[StartFailed, bool]:
         """Snapshot posterior, **no atómico** con el CAS. `unspent` sólo
         autoriza intentar otro CAS; nunca autoriza spawn."""
         try:
             status: object = self._replay_store.start_token_status(identity_digest)
         except Exception:
             return _failed(REASON_START_FAILED_INDETERMINATE,
-                           f"{origin}:status_unavailable")
+                           f"{origin}:status_unavailable"), False
         if type(status) is not str:
             # Un valor de otro tipo no adquiere autoridad por comparación.
             return _failed(REASON_START_FAILED_INDETERMINATE,
-                           f"{origin}:status_type")
+                           f"{origin}:status_type"), False
         if status == "unspent":
-            return _failed(REASON_START_FAILED, f"{origin}:unspent")
+            return _failed(REASON_START_FAILED, f"{origin}:unspent"), False
         if status == "spent":
-            return _failed(REASON_START_FAILED_INDETERMINATE, f"{origin}:spent")
+            return _failed(REASON_START_FAILED_INDETERMINATE, f"{origin}:spent"), True
         # "unknown" y cualquier otro valor: prevalece lo indeterminado.
-        return _failed(REASON_START_FAILED_INDETERMINATE, f"{origin}:unknown")
+        return _failed(REASON_START_FAILED_INDETERMINATE, f"{origin}:unknown"), False
 
     def _retain_indeterminate(self, identity_digest: str,
                               detail: str) -> StartFailed:
@@ -452,8 +463,7 @@ class StartService:
         except Exception:
             return self._retain_indeterminate(plan.identity_digest,
                                               "spawn:post_spawn_error")
-        deposit_authority = object()
-        record = _HandleRecord(handle_ref, deposit_authority)
+        record, finish = _terminal_pair(handle_ref)
         pending = _PendingCapability(handle, record)
         with self._handles_lock:
             if (handle_ref in self._operations
@@ -464,7 +474,7 @@ class StartService:
             self._pending_handles[handle_ref] = pending
         try:
             threading.Thread(target=self._watch_terminal,
-                             args=(handle_ref, record, deposit_authority),
+                             args=(handle_ref, record, finish),
                              daemon=True).start()
         except Exception:
             with self._handles_lock:
@@ -475,11 +485,11 @@ class StartService:
         return Started(handle_ref=handle_ref)
 
     def _watch_terminal(self, ref: str, record: _HandleRecord,
-                        deposit_authority: object) -> None:
+                        finish: Callable[[object], bool]) -> None:
         """FIX-M2-R2/R3: punto único de transferencia de ownership.
 
         Un solo hilo por acción consume el traspaso del host, deposita mediante
-        la capability interna no reutilizable `record`, libera el slot
+        el writer `finish` separado de la vista consumidora, libera el slot
         exactamente una vez y cierra el registro operacional.
         Ante ausencia definitiva (canal X/error sin terminal) no se fabrica
         resultado: el slot también se libera y los esperadores despiertan a
@@ -489,13 +499,13 @@ class StartService:
         try:
             handoff = self._process_host.collect_terminal(ref, timeout=None)
             if handoff is not None:
-                record.deposit_once(_build_awaited(handoff), deposit_authority)
+                finish(_build_awaited(handoff))
         finally:
             self._slots.release()
             with self._handles_lock:
                 if self._operations.get(ref) is record:
                     self._operations.pop(ref, None)
-            record.close_without_result(deposit_authority)
+            finish(None)
 
     def handle_for(self, handle_ref: str) -> Optional[ExecutionHandle]:
         """Transfiere una vez la capability prometida por `Started`.
@@ -531,12 +541,12 @@ class StartService:
         from ..domain.termination import TerminationReason
         if reason is not None and reason is not TerminationReason.OPERATOR_REQUESTED:
             return TerminationRejected()
-        if not isinstance(handle, ExecutionHandle):
-            return TerminationRejected()
-        if not handle.authenticates_for(self._operator_key, self._instance):
+        if type(handle) is not ExecutionHandle:
             return TerminationRejected()
         record = self._record_for(handle)
         if record is None:
+            return TerminationRejected()
+        if not handle.authenticates_for(self._operator_key, self._instance):
             return TerminationRejected()
         # Repetición con el mismo objeto: mismo receipt, sin segundo efecto.
         if handle.already_terminated():
@@ -569,12 +579,19 @@ class StartService:
 
         Los buffers son memoria del llamador; ektel no afirma gobernarla.
         """
-        if not isinstance(handle, ExecutionHandle):
+        if type(handle) is not ExecutionHandle:
             return None
-        if not handle.authenticates_for(self._operator_key, self._instance):
+        if type(timeout) not in (int, float):
+            return None
+        try:
+            if not math.isfinite(timeout) or not 0 <= timeout <= threading.TIMEOUT_MAX:
+                return None
+        except OverflowError:
             return None
         record = self._record_for(handle)
         if record is None:
+            return None
+        if not handle.authenticates_for(self._operator_key, self._instance):
             return None
         if not record.wait(timeout):
             return None

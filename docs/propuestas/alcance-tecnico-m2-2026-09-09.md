@@ -1,5 +1,13 @@
 # Propuesta de alcance técnico M2 — enumeración §8
 
+**Enmienda posterior, 2026-09-10:** la
+[decisión humana R15/R16](../decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md)
+autoriza en §6.2 la emisión de evidencia local M2 acotada desde Admission, sin
+cambiar la ruta M1 sin configuración M2. Abarca Admission/Start, handle, snapshot
+del Host, fixtures/pruebas M2 y documentación. No modifica wire, ReplayStore ni
+revalidación pura. El inventario original siguiente se conserva como baseline;
+la corrección concreta y sus pruebas se identifican en el paquete correctivo 3.
+
 > **NO AUTORIZA M2.** Propuesta del agente que traduce el alcance
 > arquitectónico ya fijado por ADR-011, ADR-012 y el paquete de preparación M2
 > a una enumeración concreta de archivos revisable. No es acta, no está firmada

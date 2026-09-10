@@ -6,6 +6,8 @@ gastado se reabra o se fabrique un handle.
 """
 from __future__ import annotations
 
+from tests.unit.helpers_m2 import start_with_issuance
+
 import sys
 import unittest
 from pathlib import Path
@@ -54,7 +56,7 @@ class OrdenTests(unittest.TestCase):
         store = MemoryReplayStore()
         host = FakeProcessHost()
         svc = make_start_service(store=store, host=host)
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         self.assertIsInstance(out, Started)
         self.assertEqual(len(host.spawns), 1)
 
@@ -62,7 +64,7 @@ class OrdenTests(unittest.TestCase):
         host = FakeProcessHost()
         svc = make_start_service(
             store=HostileStore(consume=ConsumeOutcome.ALREADY_SPENT), host=host)
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         assert isinstance(out, StartFailed)
         self.assertEqual(out.reason_code, REASON_CAPABILITY_REJECTED)
         self.assertEqual(host.spawns, [], "ALREADY_SPENT no puede llegar a spawn")
@@ -73,7 +75,7 @@ class OrdenTests(unittest.TestCase):
         host = FakeProcessHost()
         from tests.unit.helpers_m1 import EXP
         svc = make_start_service(store=store, host=host, now=float(EXP) - 0.0005)
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         assert isinstance(out, StartFailed)
         self.assertEqual(out.safe_detail, "deadline:effective_zero")
         self.assertEqual(host.spawns, [])
@@ -85,7 +87,7 @@ class OrdenTests(unittest.TestCase):
         host = FakeProcessHost()
         from tests.unit.helpers_m1 import EXP
         svc = make_start_service(host=host, now=float(EXP) - 1.0)
-        svc.start(valid_start_request())
+        start_with_issuance(svc, valid_start_request())
         _plan, effective, validity_bound = host.spawns[0]
         self.assertEqual(effective, 1000, "min(deadline_ms, vigencia restante)")
         self.assertTrue(validity_bound,
@@ -99,7 +101,7 @@ class ReconciliacionTests(unittest.TestCase):
         store = HostileStore(**store_kw)  # type: ignore[arg-type]
         host = FakeProcessHost()
         svc = make_start_service(store=store, host=host)
-        return svc.start(valid_start_request()), store, host
+        return start_with_issuance(svc, valid_start_request()), store, host
 
     def test_unavailable_mas_unspent_es_start_failed(self) -> None:
         out, store, host = self._run(
@@ -157,7 +159,7 @@ class CrashYSpawnTests(unittest.TestCase):
     def test_fallo_sincrono_del_host_es_determinado(self) -> None:
         store = MemoryReplayStore()
         svc = make_start_service(store=store, host=FakeProcessHost(reject=True))
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         assert isinstance(out, StartFailed)
         self.assertEqual(out.reason_code, REASON_START_FAILED)
         self.assertIn("host_rejected", out.safe_detail)
@@ -165,25 +167,26 @@ class CrashYSpawnTests(unittest.TestCase):
     def test_excepcion_opaca_del_host_es_indeterminada(self) -> None:
         """No se puede afirmar que no exista un proceso."""
         svc = make_start_service(host=FakeProcessHost(raise_unknown=True))
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         assert isinstance(out, StartFailed)
         self.assertEqual(out.reason_code, REASON_START_FAILED_INDETERMINATE)
 
     def test_excepcion_opaca_no_libera_el_slot(self) -> None:
         """Podria haber un proceso vivo: liberar el slot mentiria sobre la cota."""
         svc = make_start_service(host=FakeProcessHost(raise_unknown=True))
-        svc.start(valid_start_request())
+        start_with_issuance(svc, valid_start_request())
         self.assertEqual(svc.slots_in_use, 1)
 
     def test_token_gastado_no_se_reabre_tras_fallo_de_spawn(self) -> None:
         store = MemoryReplayStore()
         svc = make_start_service(store=store, host=FakeProcessHost(reject=True))
         req = valid_start_request()
-        svc.start(req)
-        segundo = svc.start(req)
+        start_with_issuance(svc, req)
+        segundo = start_with_issuance(svc, req)
         assert isinstance(segundo, StartFailed)
         self.assertEqual(segundo.reason_code, REASON_CAPABILITY_REJECTED)
-        self.assertEqual(segundo.safe_detail, "cas:already_spent")
+        self.assertEqual(segundo.safe_detail, "config:issuance_missing")
+        self.assertTrue(store._spent, "el CAS durable sigue gastado")
 
     def test_handle_ref_invalido_no_fabrica_handle_y_retienel_slot(self) -> None:
         """FIX-M2-R5: un ref inválido post-spawn es indeterminado CON
@@ -191,7 +194,7 @@ class CrashYSpawnTests(unittest.TestCase):
         no existe proceso (OAI-M2-02 v1 / F5)."""
         svc = make_start_service(host=FakeProcessHost(bad_ref=True),
                                  config=M2Config.build(max_concurrent_actions=1))
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         assert isinstance(out, StartFailed)
         self.assertEqual(out.reason_code, REASON_START_FAILED_INDETERMINATE)
         self.assertEqual(svc.slots_in_use, 1,
@@ -206,7 +209,7 @@ class CrashYSpawnTests(unittest.TestCase):
         capacidad con spawn ocurrido."""
         svc = make_start_service(host=FakeProcessHost(bad_ref_hex=True),
                                  config=M2Config.build(max_concurrent_actions=1))
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         assert isinstance(out, StartFailed)
         self.assertEqual(out.reason_code, REASON_START_FAILED_INDETERMINATE)
         self.assertEqual(out.safe_detail, "spawn:handle_ref_invalid")
@@ -222,7 +225,7 @@ class RegresionRelojYEstadoTests(unittest.TestCase):
         for now in (float("inf"), float("-inf"), float("nan")):
             with self.subTest(now=now):
                 svc = make_start_service(now=now)
-                out = svc.start(valid_start_request())
+                out = start_with_issuance(svc, valid_start_request())
                 assert isinstance(out, StartFailed)
                 self.assertEqual(out.reason_code, REASON_START_FAILED)
                 self.assertEqual(out.safe_detail, "clock:unavailable")
@@ -239,7 +242,7 @@ class RegresionRelojYEstadoTests(unittest.TestCase):
             store=HostileStore(consume=ConsumeOutcome.UNAVAILABLE,
                                status=Mentiroso()),
             host=host)
-        out = svc.start(valid_start_request())
+        out = start_with_issuance(svc, valid_start_request())
         assert isinstance(out, StartFailed)
         self.assertEqual(out.reason_code, REASON_START_FAILED_INDETERMINATE)
         self.assertEqual(out.safe_detail, "cas:unavailable:status_type")
@@ -272,11 +275,7 @@ def _real_service(**kw: object) -> StartService:
     cfg = M2Config.build(max_concurrent_actions=4, **kw)
     host = PosixSupervisorHost.from_config(cfg)
     reloj = (lambda: float(NOW)) if now is None else (lambda: float(now))  # type: ignore[arg-type]
-    return StartService(
-        replay_store=MemoryReplayStore(), process_host=host,
-        operator_key=TEST_KEY, active_key_id=TEST_KEY_ID,
-        config=cfg, declared_config_fingerprint=cfg.fingerprint,
-        wall_clock=reloj)
+    return make_start_service(host=host, config=cfg, now=reloj())
 
 
 class CicloCompletoTests(unittest.TestCase):
@@ -288,7 +287,7 @@ class CicloCompletoTests(unittest.TestCase):
 
     def test_salida_natural_entrega_awaited_execution(self) -> None:
         svc = _real_service()
-        out = svc.start(_pair("import sys;sys.stdout.write('hola');"
+        out = start_with_issuance(svc, _pair("import sys;sys.stdout.write('hola');"
                               "sys.stderr.write('err')"))
         self.assertIsInstance(out, Started)
         assert isinstance(out, Started)
@@ -306,7 +305,7 @@ class CicloCompletoTests(unittest.TestCase):
     def test_executed_con_exit_status_no_cero(self) -> None:
         """`executed` es salida natural, NO exito (invariante 9)."""
         svc = _real_service()
-        out = svc.start(_pair("raise SystemExit(3)", n=2))
+        out = start_with_issuance(svc, _pair("raise SystemExit(3)", n=2))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
@@ -317,7 +316,7 @@ class CicloCompletoTests(unittest.TestCase):
 
     def test_deadline_excedido_se_clasifica_por_causa(self) -> None:
         svc = _real_service(termination_grace_ms=500)
-        out = svc.start(_pair("import time;time.sleep(60)", n=3,
+        out = start_with_issuance(svc, _pair("import time;time.sleep(60)", n=3,
                               deadline_ms=1500))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
@@ -337,7 +336,7 @@ class CicloCompletoTests(unittest.TestCase):
         from tests.unit.helpers_m1 import EXP
         svc = _real_service(termination_grace_ms=200,
                             now=float(EXP) - 0.5)
-        out = svc.start(_pair("import time;time.sleep(60)", n=8,
+        out = start_with_issuance(svc, _pair("import time;time.sleep(60)", n=8,
                               deadline_ms=30000))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
@@ -358,7 +357,7 @@ class CicloCompletoTests(unittest.TestCase):
         from src.domain.execution_result import (
             CAUSE_EXTERNAL_TERMINATION, OUTCOME_TERMINATED)
         svc = _real_service(termination_grace_ms=500)
-        out = svc.start(_pair(
+        out = start_with_issuance(svc, _pair(
             "import signal,time\n"
             "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
             "time.sleep(60)\n", n=9, deadline_ms=3000))
@@ -378,7 +377,7 @@ class CicloCompletoTests(unittest.TestCase):
 
     def test_mediciones_congeladas_y_garantias_aplicadas(self) -> None:
         svc = _real_service(termination_grace_ms=700)
-        out = svc.start(_pair("import sys;sys.stdout.write('x')", n=4,
+        out = start_with_issuance(svc, _pair("import sys;sys.stdout.write('x')", n=4,
                               deadline_ms=2500))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
@@ -400,14 +399,9 @@ class CicloCompletoTests(unittest.TestCase):
         from tests.unit.helpers_m1 import EXP, NOW as _NOW
         host = PosixSupervisorHost.from_config(
             M2Config.build(termination_grace_ms=500))
-        svc = StartService(
-            replay_store=MemoryReplayStore(), process_host=host,
-            operator_key=TEST_KEY, active_key_id=TEST_KEY_ID,
-            config=M2Config.build(termination_grace_ms=500),
-            declared_config_fingerprint=M2Config.build(
-                termination_grace_ms=500).fingerprint,
-            wall_clock=lambda: float(NOW))
-        out = svc.start(_pair("import sys;sys.stdout.write('x')", n=10,
+        svc = make_start_service(host=host,
+            config=M2Config.build(termination_grace_ms=500))
+        out = start_with_issuance(svc, _pair("import sys;sys.stdout.write('x')", n=10,
                               deadline_ms=2500))
         self.assertIsInstance(out, _Started)
         assert isinstance(out, _Started)
@@ -424,7 +418,7 @@ class CicloCompletoTests(unittest.TestCase):
 
     def test_el_slot_se_libera_al_completar_el_traspaso(self) -> None:
         svc = _real_service()
-        out = svc.start(_pair("import sys;sys.stdout.write('x')", n=5))
+        out = start_with_issuance(svc, _pair("import sys;sys.stdout.write('x')", n=5))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
@@ -436,7 +430,7 @@ class CicloCompletoTests(unittest.TestCase):
     def test_ausencia_honesta_si_no_llega_el_traspaso(self) -> None:
         """`None`, no un resultado fabricado."""
         svc = _real_service()
-        out = svc.start(_pair("import time;time.sleep(30)", n=6,
+        out = start_with_issuance(svc, _pair("import time;time.sleep(30)", n=6,
                               deadline_ms=60000))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)

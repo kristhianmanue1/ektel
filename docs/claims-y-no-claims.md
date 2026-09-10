@@ -85,6 +85,13 @@ a V y esta nota se actualiza por claim, no en bloque.)*
 
 ## No-claims (lo que ektel NO afirma)
 
+Enmienda humana M2 del 2026-09-10:
+[ratificación R13-STRONG/R15/R16](decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md).
+C2 conserva replay durable; el perfil de una emisión M2 requiere además evidencia
+local efímera. Perderla implica rechazo de Start, no reconstrucción desde token v1.
+C4 y el ownership terminal se interpretan bajo composición confiable e interfaces
+admitidas; ninguna promoción de evidencia ni cierre M2 resulta de esta enmienda.
+
 | # | No-claim | Origen |
 |---|---|---|
 | N1 | Ektel **no garantiza la identidad del binario ejecutado**: con `route_mutable_unverified`, el contenido de `command_absolute` puede cambiar entre admisión e inicio (TOCTOU reconocido, no mitigado en v1). Si este supuesto cae, la identidad del descriptor sigue autenticada (C2 en parte), pero la vinculación al artefacto realmente ejecutado queda anulada. | D7a, ADR-003 |
@@ -108,6 +115,10 @@ a V y esta nota se actualiza por claim, no en bloque.)*
 | N17 | El token de admisión v1 no demuestra que `action_request_wire` presentado a `start` sea byte-a-byte el documento exterior observado por `admit`. `start` sólo puede revalidar equivalencia del material ejecutable cubierto por la capacidad; serialización exterior y `metadata_opaque` no quedan ligados por el token. | ADR-011 |
 | N18 | `AwaitedExecution` transporta stdout/stderr sólo en la API local: no forman parte de `ExecutionResult v1`, no se persisten por M2 y `max_concurrent_actions` no acota globalmente los payloads de handles terminados que retenga el llamador ni promete una cota exacta de RSS. | ADR-012 |
 | N19 | M2 sólo admite `audit_mode=optional`; esto no satisface ni elimina C5/C7 ni `audit_trail`. Antes de M3, configurar `required` impide inicializar el servicio; no existe un AuditSink o evento sustituto M2. | ADR-007/012 |
+
+| # | No-claim | Origen |
+|---|---|---|
+| N20 | EKTEL M2 no proporciona aislamiento de seguridad frente a código Python arbitrario ejecutándose dentro del mismo proceso del coordinador ni garantiza que dicho código no pueda inspeccionar o modificar estado interno del runtime. | Decisión humana 2026-09-10, R13-STRONG/R15/R16 |
 
 ## Regla de uso
 

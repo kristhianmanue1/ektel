@@ -8,6 +8,8 @@ distinto de `capability_rejected`.
 """
 from __future__ import annotations
 
+from tests.unit.helpers_m2 import start_with_issuance
+
 import sys
 import unittest
 from pathlib import Path
@@ -30,7 +32,7 @@ from tests.unit.helpers_m2 import (  # noqa: E402
 
 
 def _started(svc: object, n: int = 1) -> ExecutionHandle:
-    out = svc.start(distinct_start_request(n))  # type: ignore[attr-defined]
+    out = start_with_issuance(svc, distinct_start_request(n))  # type: ignore[attr-defined]
     assert isinstance(out, Started)
     handle = svc.handle_for(out.handle_ref)  # type: ignore[attr-defined]
     assert handle is not None

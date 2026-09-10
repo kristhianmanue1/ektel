@@ -610,6 +610,9 @@ class PosixSupervisorHost:
                 or requested_fingerprint != self._config_fingerprint
                 or not self._applied_profile_matches()):
             raise SpawnRejected("config_fingerprint_mismatch")
+        # R16: los parámetros salen del mismo snapshot comprometido; los
+        # campos espejo sirven para detectar drift, no como segunda autoridad.
+        profile = self._config_profile
         payload = json.dumps({
             "command_absolute": plan.command_absolute,
             "args": list(plan.args),
@@ -620,12 +623,12 @@ class PosixSupervisorHost:
             "max_stderr_bytes": plan.max_stderr_bytes,
             # Transportado y registrado; NO aplicado hasta INC-M2-4.
             "deadline_eff_ms": deadline_eff_ms,
-            "subreaper_requested": (self._subreaper_requested
+            "subreaper_requested": (profile.subreaper_requested
                                     and self._caps.subreaper_available),
-            "credit_timeout_ms": self._credit_timeout_ms,
-            "eof_drain_timeout_ms": self._eof_drain_timeout_ms,
-            "termination_grace_ms": self._termination_grace_ms,
-            "post_kill_drain_ms": self._post_kill_drain_ms,
+            "credit_timeout_ms": profile.credit_timeout_ms,
+            "eof_drain_timeout_ms": profile.eof_drain_timeout_ms,
+            "termination_grace_ms": profile.termination_grace_ms,
+            "post_kill_drain_ms": profile.post_kill_drain_ms,
         }).encode("utf-8")
 
         plan_r, plan_w = os.pipe()

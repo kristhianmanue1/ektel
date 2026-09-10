@@ -5,6 +5,8 @@ global tras abandonar un handle, o no liberar el slot en el handoff terminal.
 """
 from __future__ import annotations
 
+from tests.unit.helpers_m2 import start_with_issuance
+
 import sys
 import threading
 import unittest
@@ -39,9 +41,9 @@ def _eventually(cond, timeout: float = 5.0, interval: float = 0.02) -> bool:
 class CapacidadTests(unittest.TestCase):
     def test_la_cota_no_se_excede(self) -> None:
         svc = make_start_service(config=M2Config.build(max_concurrent_actions=2))
-        self.assertIsInstance(svc.start(_request(1)), Started)
-        self.assertIsInstance(svc.start(_request(2)), Started)
-        tercero = svc.start(_request(3))
+        self.assertIsInstance(start_with_issuance(svc, _request(1)), Started)
+        self.assertIsInstance(start_with_issuance(svc, _request(2)), Started)
+        tercero = start_with_issuance(svc, _request(3))
         assert isinstance(tercero, StartFailed)
         self.assertEqual(tercero.reason_code, REASON_START_FAILED)
         self.assertEqual(tercero.safe_detail, "capacity:no_slot")
@@ -51,13 +53,13 @@ class CapacidadTests(unittest.TestCase):
         store = MemoryReplayStore()
         svc = make_start_service(store=store,
                                  config=M2Config.build(max_concurrent_actions=1))
-        svc.start(_request(1))
+        start_with_issuance(svc, _request(1))
         req2 = _request(2)
-        rechazado = svc.start(req2)
+        rechazado = start_with_issuance(svc, req2)
         assert isinstance(rechazado, StartFailed)
         self.assertEqual(rechazado.safe_detail, "capacity:no_slot")
         # El mismo token sigue sin gastar: el llamador puede reintentar.
-        segundo = svc.start(req2)
+        segundo = start_with_issuance(svc, req2)
         assert isinstance(segundo, StartFailed)
         self.assertEqual(segundo.safe_detail, "capacity:no_slot",
                          "seguir sin capacidad, no 'ya gastado'")
@@ -66,20 +68,20 @@ class CapacidadTests(unittest.TestCase):
         """`start_failed` no lleva `retryable`: M2 no afirma esa distincion
         como machine-readable (D-M2-2(a))."""
         svc = make_start_service(config=M2Config.build(max_concurrent_actions=1))
-        svc.start(_request(1))
-        out = svc.start(_request(2))
+        start_with_issuance(svc, _request(1))
+        out = start_with_issuance(svc, _request(2))
         assert isinstance(out, StartFailed)
         self.assertFalse(hasattr(out, "retryable"))
 
     def test_fallo_pre_spawn_libera_el_slot(self) -> None:
         svc = make_start_service(host=FakeProcessHost(reject=True),
                                  config=M2Config.build(max_concurrent_actions=1))
-        svc.start(_request(1))
+        start_with_issuance(svc, _request(1))
         self.assertEqual(svc.slots_in_use, 0)
         # Con el slot libre, la siguiente accion llega hasta el spawn: falla
         # por el host, NO por capacidad. Esa distincion es la prueba de que el
         # slot se libero.
-        segundo = svc.start(_request(2))
+        segundo = start_with_issuance(svc, _request(2))
         assert isinstance(segundo, StartFailed)
         self.assertEqual(segundo.safe_detail, "spawn:host_rejected")
 
@@ -87,7 +89,7 @@ class CapacidadTests(unittest.TestCase):
         host = FakeProcessHost()
         svc = make_start_service(host=host,
                                  config=M2Config.build(max_concurrent_actions=1))
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
@@ -106,7 +108,7 @@ class CapacidadTests(unittest.TestCase):
         host = FakeProcessHost()
         svc = make_start_service(host=host,
                                  config=M2Config.build(max_concurrent_actions=1))
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
@@ -130,7 +132,7 @@ class CapacidadTests(unittest.TestCase):
         caller-capability state, no del runtime operacional (FIX-M2-R12)."""
         host = FakeProcessHost()
         svc = make_start_service(host=host)
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
@@ -157,7 +159,7 @@ class CapacidadTests(unittest.TestCase):
             host=host, config=M2Config.build(max_concurrent_actions=1))
         lost = 0
         for n in range(1, 501):
-            out = svc.start(_request(n))
+            out = start_with_issuance(svc, _request(n))
             assert isinstance(out, Started)
             handle = svc.handle_for(out.handle_ref)
             if handle is None:
@@ -178,7 +180,7 @@ class CapacidadTests(unittest.TestCase):
                 return ref
 
         svc = make_start_service(host=TerminalInsideSpawn())
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         self.assertIsNotNone(handle)
@@ -200,17 +202,17 @@ class CapacidadTests(unittest.TestCase):
         svc = make_start_service(
             store=store, host=host,
             config=M2Config.build(max_concurrent_actions=1))
-        primero = svc.start(_request(1))
+        primero = start_with_issuance(svc, _request(1))
         assert isinstance(primero, Started)
         self.assertTrue(_eventually(lambda: svc.slots_in_use == 0))
         segundo_req = _request(2)
-        segundo = svc.start(segundo_req)
+        segundo = start_with_issuance(svc, segundo_req)
         assert isinstance(segundo, StartFailed)
         self.assertEqual(segundo.safe_detail, "capacity:no_handle_slot")
         self.assertEqual(len(host.spawns), 1, "el rechazo precede al spawn")
         self.assertEqual(svc.pending_handle_count, 1)
         self.assertIsNotNone(svc.handle_for(primero.handle_ref))
-        reintento = svc.start(segundo_req)
+        reintento = start_with_issuance(svc, segundo_req)
         self.assertIsInstance(reintento, Started,
                               "el rechazo no consumió el token")
 
@@ -234,7 +236,7 @@ class CarreraDeSlotsTests(unittest.TestCase):
         def correr(req: object) -> None:
             try:
                 barrera.wait()
-                out = svc.start(req)
+                out = start_with_issuance(svc, req)
             except BaseException as exc:  # nunca colgar la suite
                 out = exc
             with lock:
@@ -291,7 +293,7 @@ class LinealizacionHandoffTests(unittest.TestCase):
         host = FakeProcessHost()
         svc = make_start_service(host=host,
                                  config=M2Config.build(max_concurrent_actions=1))
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
@@ -310,8 +312,8 @@ class LinealizacionHandoffTests(unittest.TestCase):
         host = FakeProcessHost()
         svc = make_start_service(host=host,
                                  config=M2Config.build(max_concurrent_actions=2))
-        out_a = svc.start(_request(1))
-        out_b = svc.start(_request(2))
+        out_a = start_with_issuance(svc, _request(1))
+        out_b = start_with_issuance(svc, _request(2))
         assert isinstance(out_a, Started) and isinstance(out_b, Started)
         handle_a = svc.handle_for(out_a.handle_ref)
         assert handle_a is not None
@@ -323,9 +325,9 @@ class LinealizacionHandoffTests(unittest.TestCase):
             _eventually(lambda: svc.slots_in_use == 1),
             "sólo el slot de B queda retenido")
         # La capacidad liberada por A admite exactamente una acción más.
-        out_c = svc.start(_request(3))
+        out_c = start_with_issuance(svc, _request(3))
         self.assertIsInstance(out_c, Started)
-        out_d = svc.start(_request(4))
+        out_d = start_with_issuance(svc, _request(4))
         assert isinstance(out_d, StartFailed)
         self.assertEqual(out_d.safe_detail, "capacity:no_slot",
                          "B sigue viva: no hay cuarto slot")
@@ -338,7 +340,7 @@ class LinealizacionHandoffTests(unittest.TestCase):
         from src.domain.execution_handle import ExecutionHandle
         host = FakeProcessHost()
         svc = make_start_service(host=host)
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
@@ -366,7 +368,7 @@ class LinealizacionHandoffTests(unittest.TestCase):
         cross-instance y de otra acción."""
         from src.domain.execution_handle import ExecutionHandle
         svc = make_start_service()
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
@@ -386,7 +388,7 @@ class LinealizacionHandoffTests(unittest.TestCase):
         from src.domain.execution_handle import ExecutionHandle
         host = FakeProcessHost()
         svc = make_start_service(host=host)
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
@@ -407,16 +409,15 @@ class LinealizacionHandoffTests(unittest.TestCase):
         from src.application.start_service import _build_awaited
         host = FakeProcessHost()
         svc = make_start_service(host=host)
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
         record = svc._record_for(handle)  # type: ignore[attr-defined]
         assert record is not None
-        falso_tipado = _build_awaited(fake_handoff({"outcome": "executed"}))
-        self.assertFalse(record.deposit_once(falso_tipado, object()))
-        self.assertFalse(record.deposit_once(object(), object()))
-        self.assertFalse(record.close_without_result(object()))
+        for target in (record, handle, svc):
+            for name in ("deposit_once", "close_without_result", "deposit_terminal_result"):
+                self.assertFalse(hasattr(target, name))
         host.deliver_terminal(out.handle_ref, fake_handoff(stdout=b"real"))
         result = svc.await_result(handle)
         self.assertIsNotNone(result)
@@ -424,19 +425,19 @@ class LinealizacionHandoffTests(unittest.TestCase):
         self.assertIsNone(svc.await_result(handle), "un solo consumidor")
 
     def test_transicion_interna_valida_tipo_y_es_de_un_solo_uso(self) -> None:
-        from src.application.start_service import _HandleRecord, _build_awaited
+        from src.application.start_service import _terminal_pair, _build_awaited
         from src.domain.execution_result import AwaitedExecution
-        authority = object()
-        record = _HandleRecord("0" * 16, authority)
+        record, finish = _terminal_pair("0" * 16)
         invalido = AwaitedExecution(  # type: ignore[arg-type]
             result=object(), stdout=b"", stderr=b"")
-        self.assertFalse(record.deposit_once(invalido, authority))
+        self.assertFalse(finish(invalido))
         valido = _build_awaited(fake_handoff(stdout=b"real"))
-        self.assertTrue(record.deposit_once(valido, authority))
-        self.assertFalse(record.deposit_once(valido, authority),
+        self.assertTrue(finish(valido))
+        self.assertFalse(finish(valido),
                          "la autoridad se consume con el primer depósito")
         self.assertIs(record.take_once(), valido)
         self.assertIsNone(record.take_once(), "el resultado se consume una vez")
+        self.assertFalse(finish(None), "ausencia no reclasifica un terminal")
 
 
 class RegresionSlotsTests(unittest.TestCase):
@@ -445,7 +446,7 @@ class RegresionSlotsTests(unittest.TestCase):
     def test_h5_el_slot_retenido_por_indeterminacion_es_observable(self) -> None:
         svc = make_start_service(host=FakeProcessHost(raise_unknown=True),
                                  config=M2Config.build(max_concurrent_actions=1))
-        out = svc.start(_request(1))
+        out = start_with_issuance(svc, _request(1))
         assert isinstance(out, StartFailed)
         self.assertEqual(out.safe_detail, "spawn:indeterminate")
         self.assertEqual(svc.slots_in_use, 1)
@@ -456,7 +457,7 @@ class RegresionSlotsTests(unittest.TestCase):
     def test_h5_liberar_es_acto_explicito_y_recupera_capacidad(self) -> None:
         svc = make_start_service(host=FakeProcessHost(raise_unknown=True),
                                  config=M2Config.build(max_concurrent_actions=1))
-        svc.start(_request(1))
+        start_with_issuance(svc, _request(1))
         identidad = svc.retained_by_indeterminacy[0]
         self.assertFalse(svc.release_indeterminate("no-existe"))
         self.assertTrue(svc.release_indeterminate(identidad))
