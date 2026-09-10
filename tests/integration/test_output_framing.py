@@ -362,7 +362,10 @@ class RegresionRondaAdversarialTests(unittest.TestCase):
 class TerminacionGraduadaTests(SupervisorCase):
     """G-M2-09 con procesos reales: TERM -> KILL y drenaje post-KILL."""
 
-    def test_proceso_que_obedece_term_no_llega_a_kill(self) -> None:
+    def test_proceso_que_obedece_term_muere_con_term_y_no_con_kill(self) -> None:
+        """FIX-M2-R9: la escalación intenta el KILL de grupo al hard deadline
+        aunque el líder ya muriera con el TERM; lo que demuestra que «TERM
+        bastó» es el returncode (-15), no la ausencia de intento."""
         host = PosixSupervisorHost(termination_grace_ms=2000)
         script = "import time,sys\nsys.stdout.write('ok');sys.stdout.flush()\ntime.sleep(60)\n"
         ref = host.spawn(plan(script), deadline_eff_ms=1500)
@@ -370,8 +373,10 @@ class TerminacionGraduadaTests(SupervisorCase):
         assert a is not None and a.terminal is not None
         t = a.terminal
         self.assertTrue(t["deadline_hit"])
-        self.assertFalse(t["killed"], "no debe escalar a KILL si TERM basto")
-        self.assertEqual(t["returncode"], -15)
+        self.assertTrue(t["killed"],
+                        "la escalación intenta el KILL incondicionalmente")
+        self.assertEqual(t["returncode"], -15,
+                         "el líder murió con TERM, no con KILL")
 
     def test_proceso_que_ignora_term_recibe_kill(self) -> None:
         host = PosixSupervisorHost(termination_grace_ms=600,
@@ -521,6 +526,72 @@ class CierreForzadoPostKillTests(SupervisorCase):
         self.assertTrue(a.terminal["killed"])
         self.assertEqual(a.terminal["post_kill_forced_pipe_close"], 0,
                          "el descendiente observado murio con el grupo")
+
+    def test_nieto_en_el_grupo_recibe_kill_aunque_el_lider_muera_con_term(self) -> None:
+        """FIX-M2-R9 (EXT3-03): líder que OBEDECE TERM y nieto del MISMO
+        grupo que lo IGNORA — el KILL de grupo se intenta al hard deadline y
+        alcanza al nieto. Este descendiente nunca salió del grupo gobernado:
+        no es el escape `setsid`, que sigue declarado."""
+        import os as _os
+        import tempfile as _tempfile
+        import time as _time
+        marca = Path(_tempfile.mkdtemp(prefix="ektel-r9-")) / "nieto.pid"
+        inner = ("import os,signal,time;"
+                 "signal.signal(signal.SIGTERM, signal.SIG_IGN);"
+                 f"open({str(marca)!r},'w').write(str(os.getpid()));"
+                 "time.sleep(90)")
+        script = ("import signal,subprocess,sys,time\n"
+                  "signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))\n"
+                  f"subprocess.Popen([sys.executable,'-c',%r])\n" % inner
+                  + "time.sleep(120)\n")
+        host = PosixSupervisorHost(termination_grace_ms=300,
+                                   post_kill_drain_ms=500)
+        ref = host.spawn(plan(script), deadline_eff_ms=1500)
+        try:
+            a = host.await_terminal(ref, timeout=TIMEOUT)
+            assert a is not None and a.terminal is not None
+            t = a.terminal
+            self.assertTrue(t["deadline_hit"])
+            self.assertTrue(t["killed"],
+                            "la escalación intenta el KILL sin condición")
+            self.assertEqual(t["returncode"], 0,
+                             "el líder murió con el TERM (rc 0)")
+            self.assertTrue(marca.exists(), "el nieto llegó a arrancar")
+            nieto = int(marca.read_text().strip())
+
+            def nieto_vivo(pid: int) -> bool:
+                """Zombie = muerto a efectos de gobernanza (FIX-M2-R9):
+                recibió la señal fatal; en contenedores con PID 1 que no
+                recolecta huérfanos puede quedar zombie sin ejecutar."""
+                try:
+                    with open(f"/proc/{pid}/stat", "rb") as entrada:
+                        data = entrada.read()
+                    cierre = data.rindex(b")")
+                    return data[cierre + 2:cierre + 3] != b"Z"
+                except (OSError, ValueError):
+                    pass
+                try:
+                    _os.kill(pid, 0)
+                    return True
+                except OSError:
+                    return False
+
+            # El KILL del grupo alcanzó al nieto: deja de estar vivo.
+            vivo = True
+            limite = _time.monotonic() + 5.0
+            while _time.monotonic() < limite:
+                if not nieto_vivo(nieto):
+                    vivo = False
+                    break
+                _time.sleep(0.05)
+            self.assertFalse(vivo,
+                             "el nieto del grupo gobernado debe recibir el KILL")
+        finally:
+            if marca.exists():
+                try:
+                    _os.kill(int(marca.read_text().strip()), 9)
+                except (OSError, ValueError):
+                    pass
 
     def test_sin_kill_no_hay_cierre_forzado_post_kill(self) -> None:
         """La clave sólo vale 1 tras KILL; un cierre por EOF no la activa."""

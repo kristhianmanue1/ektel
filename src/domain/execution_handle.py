@@ -37,14 +37,23 @@ from .termination import (
 
 
 class ExecutionHandle:
-    """Handle local del llamador. No serializable, no comparable por valor."""
+    """Handle local del llamador. No serializable, no comparable por valor.
+
+    FIX-M2-R2/R4: el depósito del resultado terminal está reservado a la ruta
+    del coordinador que acuñó el handle — el hilo vigilante creado en el
+    `spawn` — mediante identidad de objeto (`deposit_terminal_result`). Un
+    objeto forjado o ajeno no puede fabricar resultados ni interponerlos en
+    el handle legítimo.
+    """
 
     __slots__ = ("_ref", "_instance", "_identity_digest", "_action_id",
-                 "_token", "_lock", "_receipt", "_result", "_released")
+                 "_token", "_lock", "_receipt", "_result", "_released",
+                 "_coordinator", "_terminal_ready")
 
     def __init__(self, *, handle_ref: str, coordinator_instance: str,
                  identity_digest: str, action_id: str,
-                 termination_token: str) -> None:
+                 termination_token: str,
+                 coordinator: object = None) -> None:
         self._ref = handle_ref
         self._instance = coordinator_instance
         self._identity_digest = identity_digest
@@ -55,6 +64,11 @@ class ExecutionHandle:
         self._receipt: Optional[str] = None
         self._result: object = None
         self._released = False
+        # Identidad del coordinador que acuñó el handle: la única ruta con
+        # autoridad para depositar el terminal. `None` (construcción ajena)
+        # nunca deposita.
+        self._coordinator = coordinator
+        self._terminal_ready = threading.Event()
 
     @property
     def handle_ref(self) -> str:
@@ -81,10 +95,29 @@ class ExecutionHandle:
             self._token, operator_key, coordinator_instance,
             self._identity_digest, self._action_id)
 
-    def store_terminal_result(self, result: object) -> None:
-        """Handoff terminal: el resultado pasa a ser propiedad del handle."""
+    def deposit_terminal_result(self, result: object,
+                                coordinator: object) -> bool:
+        """FIX-M2-R2: transferencia única de ownership del terminal.
+
+        Sólo el coordinador que acuñó este handle puede depositar. Devuelve
+        `False` (sin efecto) ante cualquier otro origen: un objeto forjado o
+        ajeno no puede fabricar resultados.
+        """
+        if self._coordinator is None or coordinator is not self._coordinator:
+            return False
         with self._lock:
             self._result = result
+        self._terminal_ready.set()
+        return True
+
+    def mark_terminal_closed(self) -> None:
+        """Ausencia definitiva del traspaso: despierta a los esperadores sin
+        fabricar resultado. La invoca el vigilante del coordinador."""
+        self._terminal_ready.set()
+
+    def wait_terminal(self, timeout: Optional[float]) -> bool:
+        """Espera acotada (o indefinida con `None`) al cierre del terminal."""
+        return self._terminal_ready.wait(timeout)
 
     def take_terminal_result(self) -> object:
         """`await_result` transfiere la propiedad; el handle conserva sólo

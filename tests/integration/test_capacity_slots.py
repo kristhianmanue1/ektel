@@ -18,11 +18,22 @@ from src.domain.start_outcomes import (  # noqa: E402
     REASON_START_FAILED, StartFailed, Started)
 from tests.unit.helpers_m1 import MemoryReplayStore  # noqa: E402
 from tests.unit.helpers_m2 import (  # noqa: E402
-    FakeProcessHost, distinct_start_request, make_start_service)
+    FakeProcessHost, distinct_start_request, fake_handoff, make_start_service)
 
 
 def _request(n: int) -> object:
     return distinct_start_request(n)
+
+
+def _eventually(cond, timeout: float = 5.0, interval: float = 0.02) -> bool:
+    """Espera acotada a que el vigilante del coordinador observe el hecho."""
+    import time
+    limite = time.monotonic() + timeout
+    while time.monotonic() < limite:
+        if cond():
+            return True
+        time.sleep(interval)
+    return cond()
 
 
 class CapacidadTests(unittest.TestCase):
@@ -73,37 +84,59 @@ class CapacidadTests(unittest.TestCase):
         self.assertEqual(segundo.safe_detail, "spawn:host_rejected")
 
     def test_handoff_terminal_libera_el_slot(self) -> None:
-        svc = make_start_service(config=M2Config.build(max_concurrent_actions=1))
+        host = FakeProcessHost()
+        svc = make_start_service(host=host,
+                                 config=M2Config.build(max_concurrent_actions=1))
         out = svc.start(_request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
-        handle.store_terminal_result({"outcome": "executed"})
         self.assertEqual(svc.slots_in_use, 1)
+        # FIX-M2-R3: el terminal llega por el puerto y el slot se libera con
+        # el handoff real (vigilante del coordinador), no por acto del
+        # llamador ni por fabricación manual del resultado.
+        host.deliver_terminal(out.handle_ref, fake_handoff({"k": 1}))
         resultado = svc.await_result(handle)
-        self.assertEqual(resultado, {"outcome": "executed"})
+        self.assertIsNotNone(resultado)
         self.assertEqual(svc.slots_in_use, 0)
 
-    def test_handle_abandonado_no_deja_registro_global(self) -> None:
-        svc = make_start_service(config=M2Config.build(max_concurrent_actions=1))
+    def test_handle_abandonado_no_deja_registro_ni_slot(self) -> None:
+        """FIX-M2-R3: acción terminada sin `await_result` — el slot se libera
+        con el handoff terminal y el coordinador no retiene el handle."""
+        host = FakeProcessHost()
+        svc = make_start_service(host=host,
+                                 config=M2Config.build(max_concurrent_actions=1))
         out = svc.start(_request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
-        handle.store_terminal_result({"outcome": "executed"})
-        svc.await_result(handle)
-        self.assertIsNone(svc.handle_for(out.handle_ref),
-                          "tras el handoff no queda registro del handle")
+        host.deliver_terminal(out.handle_ref, fake_handoff({"outcome": "executed"}))
+        self.assertTrue(
+            _eventually(lambda: svc.slots_in_use == 0),
+            "el handoff terminal libera el slot sin await_result")
+        self.assertTrue(
+            _eventually(lambda: svc.handle_for(out.handle_ref) is None),
+            "tras el handoff no queda registro del handle")
+        # La propiedad del resultado depositado es del llamador: su handle
+        # sigue pudiendo transferirla aunque el registro ya no exista.
+        resultado = svc.await_result(handle)
+        self.assertIsNotNone(resultado)
+        self.assertEqual(svc.slots_in_use, 0)
+        # Y un segundo consumidor recibe ausencia honesta, no otra entrega.
+        self.assertIsNone(svc.await_result(handle))
 
     def test_handle_retenido_conserva_su_memoria(self) -> None:
         """Retener un handle terminal retiene su resultado: memoria del
-        llamador, no del runtime."""
-        svc = make_start_service()
+        llamador, no del runtime. El depósito es privilegio del coordinador
+        que acuñó el handle (FIX-M2-R4)."""
+        host = FakeProcessHost()
+        svc = make_start_service(host=host)
         out = svc.start(_request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
-        handle.store_terminal_result({"payload": "x"})
+        self.assertTrue(handle.deposit_terminal_result({"payload": "x"}, svc),
+                        "el coordinador acuñador puede depositar")
         self.assertTrue(handle.has_terminal_result)
 
 
@@ -146,6 +179,134 @@ class CarreraDeSlotsTests(unittest.TestCase):
                              "la cota de capacidad se excedio bajo carrera")
         self.assertLessEqual(svc.slots_in_use, capacidad)
 
+
+
+class LinealizacionHandoffTests(unittest.TestCase):
+    """FIX-M2-R2/R4 — entrega única del terminal y frontera de confianza.
+
+    Falsifica: doble entrega ante `await_result` concurrentes, doble
+    liberación de slot con sobre-admisión, recolección por handle forjado,
+    cross-instance o de otra acción, y desalojo del handle legítimo por un
+    impostor con la misma referencia.
+    """
+
+    def _dos_hilos_await(self, svc: object, handle: object,
+                         ) -> tuple[object, object]:
+        import threading
+        resultados: list[object] = []
+        barrera = threading.Barrier(2, timeout=30)
+
+        def correr() -> None:
+            barrera.wait()
+            out: object = svc.await_result(handle)  # type: ignore[attr-defined]
+            resultados.append(out)
+
+        hilos = [threading.Thread(target=correr) for _ in range(2)]
+        for h in hilos:
+            h.start()
+        for h in hilos:
+            h.join(timeout=60)
+        self.assertEqual(len(resultados), 2)
+        return resultados[0], resultados[1]
+
+    def test_doble_await_concurrente_entrega_una_vez(self) -> None:
+        """FIX-M2-R2: dos `await_result` concurrentes sobre el mismo handle —
+        exactamente una entrega; el segundo consumidor recibe ausencia
+        honesta; el slot se libera una sola vez."""
+        host = FakeProcessHost()
+        svc = make_start_service(host=host,
+                                 config=M2Config.build(max_concurrent_actions=1))
+        out = svc.start(_request(1))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        host.deliver_terminal(out.handle_ref, fake_handoff({"outcome": "executed"}))
+        primero, segundo = self._dos_hilos_await(svc, handle)
+        entregas = [r for r in (primero, segundo) if r is not None]
+        self.assertEqual(len(entregas), 1,
+                         "el terminal se entrega exactamente una vez")
+        self.assertEqual(svc.slots_in_use, 0,
+                         "una sola liberación de slot por una sola acción")
+
+    def test_doble_liberacion_no_admite_una_tercera_accion(self) -> None:
+        """FIX-M2-R2: capacidad 2 con otra acción viva — la doble espera del
+        terminal de A nunca libera el slot de B; nunca se admite una tercera
+        acción por encima de la cota por doble release."""
+        host = FakeProcessHost()
+        svc = make_start_service(host=host,
+                                 config=M2Config.build(max_concurrent_actions=2))
+        out_a = svc.start(_request(1))
+        out_b = svc.start(_request(2))
+        assert isinstance(out_a, Started) and isinstance(out_b, Started)
+        handle_a = svc.handle_for(out_a.handle_ref)
+        assert handle_a is not None
+        self.assertEqual(svc.slots_in_use, 2)
+        host.deliver_terminal(out_a.handle_ref, fake_handoff({"outcome": "executed"}))
+        # A termina mientras B sigue viva (ninguna entrega para B).
+        self._dos_hilos_await(svc, handle_a)
+        self.assertTrue(
+            _eventually(lambda: svc.slots_in_use == 1),
+            "sólo el slot de B queda retenido")
+        # La capacidad liberada por A admite exactamente una acción más.
+        out_c = svc.start(_request(3))
+        self.assertIsInstance(out_c, Started)
+        out_d = svc.start(_request(4))
+        assert isinstance(out_d, StartFailed)
+        self.assertEqual(out_d.safe_detail, "capacity:no_slot",
+                         "B sigue viva: no hay cuarto slot")
+        self.assertEqual(svc.slots_in_use, 2)
+
+    def test_handle_forjado_no_recolecta_ni_desaloja(self) -> None:
+        """FIX-M2-R4: un `ExecutionHandle` forjado con la misma `handle_ref`
+        no puede recolectar el terminal ni desalojar al handle legítimo; el
+        legítimo conserva íntegro su derecho."""
+        from src.domain.execution_handle import ExecutionHandle
+        host = FakeProcessHost()
+        svc = make_start_service(host=host)
+        out = svc.start(_request(1))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        # El token del impostor no puede autenticarse: material distinto.
+        from src.domain.termination import mint_termination_token
+        from tests.unit.helpers_m2 import TEST_KEY
+        impostor = ExecutionHandle(
+            handle_ref=handle.handle_ref,
+            coordinator_instance=svc.coordinator_instance,
+            identity_digest=handle.identity_digest,
+            action_id="action-9999",
+            termination_token=mint_termination_token(
+                TEST_KEY, svc.coordinator_instance, handle.identity_digest,
+                handle.action_id),
+        )
+        self.assertIsNone(svc.await_result(impostor),
+                          "el impostor no recolecta el terminal ajeno")
+        host.deliver_terminal(out.handle_ref, fake_handoff({"outcome": "executed"}))
+        resultado = svc.await_result(handle)
+        self.assertIsNotNone(resultado,
+                             "el handle legítimo conserva su derecho íntegro")
+
+    def test_await_result_rechaza_handles_forjados(self) -> None:
+        """FIX-M2-R4: matriz negativa de `await_result` — forjado simple,
+        cross-instance y de otra acción."""
+        from src.domain.execution_handle import ExecutionHandle
+        svc = make_start_service()
+        out = svc.start(_request(1))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        forjado = ExecutionHandle(
+            handle_ref=handle.handle_ref, coordinator_instance="otra",
+            identity_digest="d", action_id="a", termination_token="0" * 64)
+        self.assertIsNone(svc.await_result(forjado))
+        svc_b = make_start_service()  # nueva instancia = reinicio
+        self.assertIsNone(svc.await_result(forjado))
+        self.assertIsNone(svc_b.await_result(handle),
+                          "cross-instance no recolecta")
+        # El resultado depositado por el coordinador no puede fabricarse
+        # desde fuera del objeto acuñador.
+        self.assertFalse(handle.deposit_terminal_result({"x": 1}, None))
+        self.assertFalse(handle.deposit_terminal_result({"x": 1}, svc_b))
 
 
 class RegresionSlotsTests(unittest.TestCase):

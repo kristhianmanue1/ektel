@@ -54,7 +54,9 @@ CREDIT_TIMEOUT_MS_RANGE = (100, 600000)
 EOF_DRAIN_TIMEOUT_MS_RANGE = (1, 10000)
 
 #: Alcance del supervisor fijado por D-M2-2(a): uno dedicado por acción.
-SUPERVISOR_SCOPE_PER_ACTION = "per_action"
+#: FIX-M2-R7: el literal es el congelado por ADR-012 §2.3
+#: (`supervisor_scope=per_action_process`), no una paráfrasis.
+SUPERVISOR_SCOPE_PER_ACTION = "per_action_process"
 
 
 class M2ConfigError(ValueError):
@@ -78,7 +80,9 @@ def _reject(name: str, detail: str) -> int:
 class M2Config:
     """Configuración local validada de la supervisión M2.
 
-    Construir esta clase directamente **no** valida; use `M2Config.build()`.
+    FIX-M2-R6: la validación vive en `__post_init__`, de modo que **ninguna**
+    vía de construcción — `build()` o el dataclass directo — puede producir
+    una instancia fuera de los rangos normativos o con `audit_mode=required`.
     """
     max_concurrent_actions: int
     termination_grace_ms: int
@@ -87,6 +91,35 @@ class M2Config:
     subreaper_requested: bool
     credit_timeout_ms: int
     eof_drain_timeout_ms: int
+
+    def __post_init__(self) -> None:
+        # Validación inexorable en la frontera de uso (FIX-M2-R6): construir
+        # el dataclass directamente no elude la matriz de D-M2-2/3/5.
+        object.__setattr__(self, "max_concurrent_actions", _exact_int_in_range(
+            self.max_concurrent_actions, "max_concurrent_actions",
+            *MAX_CONCURRENT_ACTIONS_RANGE))
+        object.__setattr__(self, "termination_grace_ms", _exact_int_in_range(
+            self.termination_grace_ms, "termination_grace_ms",
+            *TERMINATION_GRACE_MS_RANGE))
+        object.__setattr__(self, "post_kill_drain_ms", _exact_int_in_range(
+            self.post_kill_drain_ms, "post_kill_drain_ms",
+            *POST_KILL_DRAIN_MS_RANGE))
+        if type(self.audit_mode) is not str or self.audit_mode not in AUDIT_MODES:
+            raise M2ConfigError(
+                f"audit_mode: valor invalido; se esperaba uno de {AUDIT_MODES}")
+        object.__setattr__(self, "credit_timeout_ms", _exact_int_in_range(
+            self.credit_timeout_ms, "credit_timeout_ms",
+            *CREDIT_TIMEOUT_MS_RANGE))
+        object.__setattr__(self, "eof_drain_timeout_ms", _exact_int_in_range(
+            self.eof_drain_timeout_ms, "eof_drain_timeout_ms",
+            *EOF_DRAIN_TIMEOUT_MS_RANGE))
+        if type(self.subreaper_requested) is not bool:
+            raise M2ConfigError("subreaper_requested: tipo exacto bool requerido")
+        if self.audit_mode == AUDIT_MODE_REQUIRED:
+            # Frontera M2/M3: no se degrada a optional ni se finge soporte.
+            raise M2ConfigError(
+                "audit_mode: 'required' exige RuntimeEvent y AuditSink, que son "
+                "entregables de M3; M3 no esta autorizado")
 
     @staticmethod
     def build(
@@ -100,39 +133,20 @@ class M2Config:
         eof_drain_timeout_ms: object = 3000,
     ) -> "M2Config":
         """Valida y construye. Fail-closed: cualquier defecto es excepción,
-        nunca un `StartFailed` ni un valor por defecto silencioso."""
-        concurrent = _exact_int_in_range(
-            max_concurrent_actions, "max_concurrent_actions",
-            *MAX_CONCURRENT_ACTIONS_RANGE)
-        grace = _exact_int_in_range(
-            termination_grace_ms, "termination_grace_ms",
-            *TERMINATION_GRACE_MS_RANGE)
-        drain = _exact_int_in_range(
-            post_kill_drain_ms, "post_kill_drain_ms",
-            *POST_KILL_DRAIN_MS_RANGE)
-        if type(audit_mode) is not str or audit_mode not in AUDIT_MODES:
-            raise M2ConfigError(
-                f"audit_mode: valor invalido; se esperaba uno de {AUDIT_MODES}")
-        credit_timeout = _exact_int_in_range(
-            credit_timeout_ms, "credit_timeout_ms", *CREDIT_TIMEOUT_MS_RANGE)
-        eof_drain = _exact_int_in_range(
-            eof_drain_timeout_ms, "eof_drain_timeout_ms",
-            *EOF_DRAIN_TIMEOUT_MS_RANGE)
-        if type(subreaper_requested) is not bool:
-            raise M2ConfigError("subreaper_requested: tipo exacto bool requerido")
-        if audit_mode == AUDIT_MODE_REQUIRED:
-            # Frontera M2/M3: no se degrada a optional ni se finge soporte.
-            raise M2ConfigError(
-                "audit_mode: 'required' exige RuntimeEvent y AuditSink, que son "
-                "entregables de M3; M3 no esta autorizado")
+        nunca un `StartFailed` ni un valor por defecto silencioso.
+
+        FIX-M2-R6: la validación normativa vive en `__post_init__`; `build()`
+        aplica los defaults y delega en ella. Los parámetros tipan `object`
+        para rechazar tipos hostiles con diagnóstico propio.
+        """
         return M2Config(
-            max_concurrent_actions=concurrent,
-            termination_grace_ms=grace,
-            post_kill_drain_ms=drain,
-            audit_mode=audit_mode,
-            subreaper_requested=subreaper_requested,
-            credit_timeout_ms=credit_timeout,
-            eof_drain_timeout_ms=eof_drain,
+            max_concurrent_actions=max_concurrent_actions,  # type: ignore[arg-type]
+            termination_grace_ms=termination_grace_ms,  # type: ignore[arg-type]
+            post_kill_drain_ms=post_kill_drain_ms,  # type: ignore[arg-type]
+            audit_mode=audit_mode,  # type: ignore[arg-type]
+            subreaper_requested=subreaper_requested,  # type: ignore[arg-type]
+            credit_timeout_ms=credit_timeout_ms,  # type: ignore[arg-type]
+            eof_drain_timeout_ms=eof_drain_timeout_ms,  # type: ignore[arg-type]
         )
 
     def guarantee_assumptions(
@@ -147,10 +161,13 @@ class M2Config:
         """
         requested = (self.subreaper_requested if subreaper_requested is None
                      else subreaper_requested)
+        # FIX-M2-R7: entradas idénticas, en orden y forma, a las congeladas
+        # por ADR-012 §2.3. La «equivalencia matemática» no sustituye al
+        # literal: el acta congeló representación textual contra la
+        # interpretación libre.
         return (
             f"termination_grace_ms_configured={self.termination_grace_ms}",
-            "useful_runtime_formula=useful_runtime_ms="
-            "deadline_eff_ms-min(termination_grace_ms,deadline_eff_ms)",
+            "useful_runtime_formula=deadline_eff_ms-applied_grace_ms",
             f"supervisor_scope={supervisor_scope}",
             f"subreaper_requested={'1' if requested else '0'}",
         )

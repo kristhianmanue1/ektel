@@ -185,6 +185,23 @@ class RegresionH3TerminacionDelGrupoTests(unittest.TestCase):
 
 
 def _vivo(pid: int) -> bool:
+    """¿El proceso está vivo en el sentido que gobierna la terminación?
+
+    Un **zombie** recibió su señal fatal y sólo espera recolección: no puede
+    ejecutar, abrir recursos ni retener CPU, de modo que a efectos de
+    gobernanza está muerto. En contenedores cuyo PID 1 no recolecta
+    huérfanos, un descendiente correctamente muerto por el grupo puede
+    permanecer zombie indefinidamente y `os.kill(pid, 0)` lo reportaría
+    como vivo; leer el estado de `/proc` distingue ambos casos (en
+    plataformas sin `/proc` rige el fallback clásico).
+    """
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as entrada:
+            data = entrada.read()
+        cierre = data.rindex(b")")
+        return data[cierre + 2:cierre + 3] != b"Z"
+    except (OSError, ValueError):
+        pass
     try:
         os.kill(pid, 0)
         return True

@@ -144,11 +144,23 @@ class CotasTemporalesTests(unittest.TestCase):
 
 
 class AssumptionsTests(unittest.TestCase):
-    """D-M2-3 congela entradas ASCII `clave=valor`, no texto libre."""
+    """D-M2-3/ADR-012 §2.3 congela entradas ASCII `clave=valor`: valor, orden
+    y forma. FIX-M2-R7: la conformidad es con el **literal** del acta, no con
+    una fórmula «matemáticamente equivalente»."""
+
+    def test_las_assumptions_son_las_congeladas_por_adr_012(self) -> None:
+        cfg = M2Config.build(termination_grace_ms=1500,
+                             subreaper_requested=True)
+        self.assertEqual(cfg.guarantee_assumptions(), (
+            "termination_grace_ms_configured=1500",
+            "useful_runtime_formula=deadline_eff_ms-applied_grace_ms",
+            "supervisor_scope=per_action_process",
+            "subreaper_requested=1",
+        ))
 
     def test_claves_orden_y_forma_congelados(self) -> None:
         cfg = M2Config.build(termination_grace_ms=1500)
-        entries = cfg.guarantee_assumptions("per_action", True)
+        entries = cfg.guarantee_assumptions()
         claves = [e.split("=", 1)[0] for e in entries]
         self.assertEqual(claves, [
             "termination_grace_ms_configured",
@@ -158,11 +170,87 @@ class AssumptionsTests(unittest.TestCase):
         ])
         self.assertTrue(all(e.isascii() for e in entries))
         self.assertEqual(entries[0], "termination_grace_ms_configured=1500")
-        self.assertEqual(entries[3], "subreaper_requested=1")
+        self.assertEqual(entries[2], "supervisor_scope=per_action_process")
+        self.assertEqual(entries[3], "subreaper_requested=0")
 
     def test_subreaper_no_solicitado_es_cero(self) -> None:
-        entries = M2Config.build().guarantee_assumptions("per_action", False)
+        entries = M2Config.build().guarantee_assumptions()
         self.assertEqual(entries[3], "subreaper_requested=0")
+
+
+class AutoridadUnicaTests(unittest.TestCase):
+    """FIX-M2-R6 (OAI-M2-03): la configuración fail-closed no puede eludirse
+    ni divergir entre admisión, servicio y supervisor."""
+
+    def test_la_construccion_directa_tambien_valida(self) -> None:
+        base: dict[str, object] = {
+            "max_concurrent_actions": 1, "termination_grace_ms": 2000,
+            "post_kill_drain_ms": 1000, "audit_mode": "optional",
+            "subreaper_requested": False, "credit_timeout_ms": 30000,
+            "eof_drain_timeout_ms": 3000,
+        }
+        invalidos = [
+            {"max_concurrent_actions": 0},
+            {"max_concurrent_actions": 65},
+            {"termination_grace_ms": 60001},
+            {"post_kill_drain_ms": 0},
+            {"credit_timeout_ms": 99},
+            {"eof_drain_timeout_ms": 10001},
+            {"termination_grace_ms": True},
+            {"max_concurrent_actions": 1.0},
+        ]
+        for kw in invalidos:
+            with self.subTest(kw=str(kw)):
+                valores = dict(base)
+                valores.update(kw)
+                with self.assertRaises(M2ConfigError):
+                    M2Config(**valores)  # type: ignore[arg-type]
+
+    def test_audit_mode_required_imposible_por_cualquier_via(self) -> None:
+        with self.assertRaises(M2ConfigError):
+            M2Config.build(audit_mode="required")
+        with self.assertRaises(M2ConfigError):
+            M2Config(
+                max_concurrent_actions=1, termination_grace_ms=2000,
+                post_kill_drain_ms=1000, audit_mode="required",
+                subreaper_requested=False, credit_timeout_ms=30000,
+                eof_drain_timeout_ms=3000)
+
+    def test_from_config_propaga_la_unica_autoridad(self) -> None:
+        from src.adapters.posix_supervisor import PosixSupervisorHost
+        cfg = M2Config.build(termination_grace_ms=777,
+                             post_kill_drain_ms=999,
+                             subreaper_requested=True)
+        host = PosixSupervisorHost.from_config(cfg)
+        # La configuración aplicada por el host proviene del mismo objeto.
+        self.assertEqual(
+            (host._termination_grace_ms, host._post_kill_drain_ms,  # type: ignore[attr-defined]
+             host._credit_timeout_ms, host._eof_drain_timeout_ms,
+             host._subreaper_requested),  # type: ignore[attr-defined]
+            (cfg.termination_grace_ms, cfg.post_kill_drain_ms,
+             cfg.credit_timeout_ms, cfg.eof_drain_timeout_ms,
+             cfg.subreaper_requested))
+        plan_cfg = cfg.guarantee_assumptions()
+        self.assertIn("termination_grace_ms_configured=777", plan_cfg)
+
+    def test_from_config_rechaza_lo_que_no_es_config(self) -> None:
+        from src.adapters.posix_supervisor import PosixSupervisorHost
+        for impostor in (None, 1, "cfg", object(), {"termination_grace_ms": 1}):
+            with self.subTest(tipo=type(impostor).__name__):
+                with self.assertRaises(ValueError):
+                    PosixSupervisorHost.from_config(impostor)
+
+    def test_el_host_valida_los_rangos_normativos_completos(self) -> None:
+        from src.adapters.posix_supervisor import PosixSupervisorHost
+        for kw in ({"termination_grace_ms": 60001},
+                   {"termination_grace_ms": -1},
+                   {"post_kill_drain_ms": 0},
+                   {"post_kill_drain_ms": 10001},
+                   {"credit_timeout_ms": 99},
+                   {"eof_drain_timeout_ms": 10001}):
+            with self.subTest(kw=str(kw)):
+                with self.assertRaises(ValueError):
+                    PosixSupervisorHost(**kw)  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":  # pragma: no cover
@@ -209,7 +297,7 @@ class GuaranteePlanAditivoTests(unittest.TestCase):
             # Declara la configuracion congelada por D-M2-3...
             self.assertIn("termination_grace_ms_configured=1500",
                           entry["assumptions"])  # type: ignore[operator]
-            self.assertIn("supervisor_scope=per_action",
+            self.assertIn("supervisor_scope=per_action_process",
                           entry["assumptions"])  # type: ignore[operator]
             # ...pero la clase sigue siendo unsupported: declarar no es promover.
             self.assertEqual(entry["class"], "unsupported")

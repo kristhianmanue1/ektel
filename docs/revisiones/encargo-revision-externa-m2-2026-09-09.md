@@ -176,3 +176,29 @@ conforme · **cero hallazgos materiales abiertos** · acta humana de cierre.
 - **x86_64**: puerta de pre-producción (ADR-006/N12).
 - Proponer **ampliaciones** de M2: un revisor puede señalar que algo falta
   según los gates vigentes, no pedir funcionalidad nueva.
+
+---
+
+## Fe de erratas (asiento posterior — FIX-M2-R10, 2026-09-09)
+
+> **Nota de prevalencia añadida después de la revisión externa.** El texto
+> anterior se conserva tal como fue congelado en el REVIEW-ROOT
+> (`eb5590b37f5c84c8b59eb36d84ccd41dc81dd52e`); esta sección es posterior y no
+> lo reescribe.
+
+El §4.1 de este encargo declara: «**G-M2-12 está PARCIAL** y su enmienda es un
+**borrador sin firmar**. Un revisor que lo trate como verde está equivocado».
+Ese texto quedó **stale**: la enmienda de criterio de G-M2-12 fue **aprobada
+por el dueño** y asentada en
+`docs/decisiones/enmienda-g-m2-12-2026-09-09.md` **antes** del REVIEW-ROOT,
+con reevaluación individual de sus diez criterios conjuntivos y promoción
+`G-M2-12 = VERDE` bajo criterio enmendado. El commit que asentó la enmienda no
+tocó este encargo, y el texto desactualizado quedó fosilizado en la raíz
+congelada.
+
+**Prevalencia:** el acta de enmienda prevalece sobre este encargo. Un revisor
+que tratara G-M2-12 como parcial o como borrador sin firmar lo haría contra el
+expediente vigente. Dos de los tres informes externos (Qwen F3, OpenCode/GLM
+EXT3-05) detectaron la contradicción de forma independiente y verificaron,
+además, que la formulación prohibida («se probó materialmente con 16 GiB») no
+aparece en el árbol.

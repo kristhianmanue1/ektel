@@ -128,6 +128,36 @@ class ClasificacionTests(unittest.TestCase):
                      validity_bound=False, externally_terminated=True),
             (OUTCOME_DEADLINE_EXCEEDED, CAUSE_DEADLINE_DURATION))
 
+    def test_primer_hecho_observado_decide_la_carrera(self) -> None:
+        """FIX-M2-R8 (OAI-M2-05): la causalidad terminate/deadline se decide
+        por el primer hecho observado, no por una precedencia estática."""
+        from src.domain.execution_result import (
+            CAUSE_EXTERNAL_TERMINATION, OUTCOME_TERMINATED)
+        # Terminación externa observada primero → terminated.
+        self.assertEqual(
+            classify(supervision_failure=False, deadline_hit=True,
+                     validity_bound=False, externally_terminated=True,
+                     first_terminal_cause="external_termination"),
+            (OUTCOME_TERMINATED, CAUSE_EXTERNAL_TERMINATION))
+        # Deadline observado primero → deadline_exceeded.
+        self.assertEqual(
+            classify(supervision_failure=False, deadline_hit=True,
+                     validity_bound=False, externally_terminated=True,
+                     first_terminal_cause="deadline"),
+            (OUTCOME_DEADLINE_EXCEEDED, CAUSE_DEADLINE_DURATION))
+        # Causalidad desconocida/empate definido → deadline (ADR-005).
+        self.assertEqual(
+            classify(supervision_failure=False, deadline_hit=True,
+                     validity_bound=False, externally_terminated=True,
+                     first_terminal_cause=None),
+            (OUTCOME_DEADLINE_EXCEEDED, CAUSE_DEADLINE_DURATION))
+        # La causalidad no altera la causa de plazo por vigencia.
+        self.assertEqual(
+            classify(supervision_failure=False, deadline_hit=True,
+                     validity_bound=True, externally_terminated=True,
+                     first_terminal_cause="deadline"),
+            (OUTCOME_DEADLINE_EXCEEDED, CAUSE_DEADLINE_VALIDITY_EXHAUSTED))
+
     def test_vigencia_gana_la_causa_del_plazo(self) -> None:
         self.assertEqual(
             classify(supervision_failure=False, deadline_hit=True,

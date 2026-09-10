@@ -53,7 +53,11 @@ class ProcessHost(Protocol):
         ...
 
     def collect_terminal(self, handle_ref: str, *,
-                         timeout: float) -> Optional[TerminalHandoff]:
-        """Espera **acotada** del traspaso terminal. `None` si no llegó dentro
-        del plazo: ausencia honesta, nunca un resultado fabricado."""
+                         timeout: Optional[float]) -> Optional[TerminalHandoff]:
+        """Espera del traspaso terminal. Con `timeout` finito, `None` si no
+        llegó dentro del plazo: ausencia honesta, nunca un resultado
+        fabricado. Con `timeout=None` espera hasta el cierre definitivo del
+        terminal (entrega o ausencia sin resultado) — es la modalidad que usa
+        el vigilante único del coordinador (FIX-M2-R2/R3).
+        """
         ...

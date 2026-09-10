@@ -6,6 +6,7 @@ M2, A-M2-1). Sin I/O y sin procesos: INC-M2-1 no crea spawn real.
 """
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from .helpers_m1 import (  # noqa: F401
@@ -59,16 +60,36 @@ def valid_start_request(**overrides: Any) -> StartRequest:
 
 
 class FakeProcessHost:
-    """Doble determinista del `ProcessHost` (INC-M2-2: cero spawn real)."""
+    """Doble determinista del `ProcessHost` (INC-M2-2: cero spawn real).
+
+    FIX-M2-R2/R3: el doble emula el ciclo de vida del terminal. Sin entrega,
+    `collect_terminal` no retorna: el slot permanece retenido, igual que un
+    host real ante una acción sin terminal. `deliver_terminal` entrega un
+    traspaso por el puerto legítimo; `deliver_absence` marca ausencia
+    definitiva (canal caído sin terminal).
+    """
 
     def __init__(self, *, reject: bool = False, raise_unknown: bool = False,
-                 bad_ref: bool = False) -> None:
+                 bad_ref: bool = False, bad_ref_hex: bool = False) -> None:
         self.reject = reject
         self.raise_unknown = raise_unknown
         self.bad_ref = bad_ref
+        self.bad_ref_hex = bad_ref_hex
         self.spawns: list[Any] = []
         self.terminations: list[str] = []
         self._n = 0
+        self._lock = threading.Lock()
+        self._terminals: dict[str, Any] = {}
+        self._absences: set[str] = set()
+        self._events: dict[str, threading.Event] = {}
+
+    def _event_for(self, handle_ref: str) -> Any:
+        with self._lock:
+            event = self._events.get(handle_ref)
+            if event is None:
+                event = threading.Event()
+                self._events[handle_ref] = event
+            return event
 
     def spawn(self, plan: Any, *, deadline_eff_ms: int,
               validity_bound: bool = False) -> str:
@@ -77,19 +98,47 @@ class FakeProcessHost:
             raise SpawnRejected("host_rejected")
         if self.raise_unknown:
             raise RuntimeError("fallo opaco del host")
-        self.spawns.append((plan, deadline_eff_ms))
+        self.spawns.append((plan, deadline_eff_ms, validity_bound))
         if self.bad_ref:
             return "no-es-un-ref"
+        if self.bad_ref_hex:
+            return "g" * 16
         self._n += 1
         return f"{self._n:016x}"
 
     def request_termination(self, handle_ref: str) -> None:
         self.terminations.append(handle_ref)
 
+    def deliver_terminal(self, handle_ref: str, handoff: Any) -> None:
+        """Entrega un traspaso por el puerto: la ruta legítima del terminal,
+        dirigida a una única acción."""
+        with self._lock:
+            self._terminals[handle_ref] = handoff
+        self._event_for(handle_ref).set()
+
+    def deliver_absence(self, handle_ref: str) -> None:
+        """Ausencia definitiva de una acción: no llegará terminal alguno."""
+        with self._lock:
+            self._absences.add(handle_ref)
+        self._event_for(handle_ref).set()
+
     def collect_terminal(self, handle_ref: str, *,
-                         timeout: float) -> Any:
-        """El doble no supervisa procesos: no hay traspaso terminal propio."""
+                         timeout: Any) -> Any:
+        """Espera la entrega del terminal de ESA acción. `None` sólo tras
+        `deliver_absence` (ausencia definitiva) o, con timeout finito, al
+        agotarse la espera."""
+        self._event_for(handle_ref).wait(timeout)
+        with self._lock:
+            if handle_ref in self._terminals:
+                return self._terminals[handle_ref]
         return None
+
+
+def fake_handoff(raw: Any = None, stdout: bytes = b"",
+                 stderr: bytes = b"") -> Any:
+    """Traspaso terminal determinista para el doble del host."""
+    from src.domain.execution_result import TerminalHandoff
+    return TerminalHandoff(raw=dict(raw or {}), stdout=stdout, stderr=stderr)
 
 
 class HostileStore:

@@ -79,7 +79,7 @@ class PostResultadoTests(unittest.TestCase):
         host = FakeProcessHost()
         svc = make_start_service(host=host)
         handle = _started(svc)
-        handle.store_terminal_result({"outcome": "executed"})
+        handle.deposit_terminal_result({"outcome": "executed"}, svc)
         out = svc.terminate(handle)
         self.assertIsInstance(out, TerminationAccepted)
         self.assertEqual(host.terminations, [],
@@ -88,14 +88,14 @@ class PostResultadoTests(unittest.TestCase):
     def test_terminate_post_resultado_no_reclasifica(self) -> None:
         svc = make_start_service()
         handle = _started(svc)
-        handle.store_terminal_result({"outcome": "executed"})
+        handle.deposit_terminal_result({"outcome": "executed"}, svc)
         svc.terminate(handle)
         self.assertEqual(handle.take_terminal_result(), {"outcome": "executed"})
 
     def test_conserva_el_derecho_de_terminacion_tras_la_ejecucion(self) -> None:
         svc = make_start_service()
         handle = _started(svc)
-        handle.store_terminal_result({"outcome": "executed"})
+        handle.deposit_terminal_result({"outcome": "executed"}, svc)
         self.assertIsInstance(svc.terminate(handle), TerminationAccepted)
 
 
@@ -169,7 +169,7 @@ class RegresionH7Tests(unittest.TestCase):
         host = FakeProcessHost()
         svc = make_start_service(host=host)
         handle = _started(svc)
-        handle.store_terminal_result({"outcome": "executed"})
+        handle.deposit_terminal_result({"outcome": "executed"}, svc)
         svc.await_result(handle)
         self.assertTrue(handle.released)
         out = svc.terminate(handle)

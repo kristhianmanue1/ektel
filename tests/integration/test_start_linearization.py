@@ -33,6 +33,7 @@ from src.domain.execution_result import (  # noqa: E402
     OUTCOME_EXECUTED,
 )
 from src.domain.start_request import StartRequest  # noqa: E402
+from src.domain.termination import TerminationAccepted  # noqa: E402
 from src.ports.replay_store import ConsumeOutcome  # noqa: E402
 from tests.unit.helpers_m1 import (  # noqa: E402
     MemoryReplayStore, NOW, TEST_KEY, TEST_KEY_ID, base_binding,
@@ -85,8 +86,10 @@ class OrdenTests(unittest.TestCase):
         from tests.unit.helpers_m1 import EXP
         svc = make_start_service(host=host, now=float(EXP) - 1.0)
         svc.start(valid_start_request())
-        _, effective = host.spawns[0]
+        _plan, effective, validity_bound = host.spawns[0]
         self.assertEqual(effective, 1000, "min(deadline_ms, vigencia restante)")
+        self.assertTrue(validity_bound,
+                        "la vigencia acotó el plazo: el dato debe viajar")
 
 
 class ReconciliacionTests(unittest.TestCase):
@@ -182,11 +185,33 @@ class CrashYSpawnTests(unittest.TestCase):
         self.assertEqual(segundo.reason_code, REASON_CAPABILITY_REJECTED)
         self.assertEqual(segundo.safe_detail, "cas:already_spent")
 
-    def test_handle_ref_invalido_no_fabrica_handle(self) -> None:
-        svc = make_start_service(host=FakeProcessHost(bad_ref=True))
+    def test_handle_ref_invalido_no_fabrica_handle_y_retienel_slot(self) -> None:
+        """FIX-M2-R5: un ref inválido post-spawn es indeterminado CON
+        retención de capacidad — no se libera el slot como si se supiera que
+        no existe proceso (OAI-M2-02 v1 / F5)."""
+        svc = make_start_service(host=FakeProcessHost(bad_ref=True),
+                                 config=M2Config.build(max_concurrent_actions=1))
         out = svc.start(valid_start_request())
         assert isinstance(out, StartFailed)
         self.assertEqual(out.reason_code, REASON_START_FAILED_INDETERMINATE)
+        self.assertEqual(svc.slots_in_use, 1,
+                         "podría existir proceso: el slot se retiene")
+        self.assertEqual(len(svc.retained_by_indeterminacy), 1,
+                         "la identidad queda registrada y recuperable")
+
+    def test_handle_ref_no_hex_es_indeterminado_sin_excepcion(self) -> None:
+        """FIX-M2-R5 (OAI-M2-02 v2): un ref de 16 caracteres no hex pasa el
+        chequeo de longitud pero no puede fabricar `Started`; la rama es
+        indeterminada con retención y nunca propaga excepción liberando
+        capacidad con spawn ocurrido."""
+        svc = make_start_service(host=FakeProcessHost(bad_ref_hex=True),
+                                 config=M2Config.build(max_concurrent_actions=1))
+        out = svc.start(valid_start_request())
+        assert isinstance(out, StartFailed)
+        self.assertEqual(out.reason_code, REASON_START_FAILED_INDETERMINATE)
+        self.assertEqual(out.safe_detail, "spawn:handle_ref_invalid")
+        self.assertEqual(svc.slots_in_use, 1)
+        self.assertEqual(len(svc.retained_by_indeterminacy), 1)
 
 
 
@@ -243,12 +268,14 @@ def _pair(script: str, n: int = 1, *, deadline_ms: int = 30000,
 
 def _real_service(**kw: object) -> StartService:
     """Coordinador real contra supervisor real: sin dobles."""
+    now = kw.pop("now", None)
     host = PosixSupervisorHost(**kw)  # type: ignore[arg-type]
+    reloj = (lambda: float(NOW)) if now is None else (lambda: float(now))  # type: ignore[arg-type]
     return StartService(
         replay_store=MemoryReplayStore(), process_host=host,
         operator_key=TEST_KEY, active_key_id=TEST_KEY_ID,
         config=M2Config.build(max_concurrent_actions=4),
-        wall_clock=lambda: float(NOW))
+        wall_clock=reloj)
 
 
 class CicloCompletoTests(unittest.TestCase):
@@ -299,6 +326,55 @@ class CicloCompletoTests(unittest.TestCase):
         self.assertEqual(awaited.result.outcome, OUTCOME_DEADLINE_EXCEEDED)
         self.assertEqual(awaited.result.cause, CAUSE_DEADLINE_DURATION)
 
+    def test_vigencia_acotada_produce_causa_de_vigencia_end_to_end(self) -> None:
+        """FIX-M2-R1: con `remaining_validity <= deadline_ms` el resultado
+        real — StartService → ProcessHost → supervisor → TerminalHandoff →
+        ExecutionResult — reporta `deadline_validity_exhausted`. No basta
+        `classify()` puro: el dato debe cruzar todo el cableado."""
+        from src.domain.execution_result import (
+            CAUSE_DEADLINE_VALIDITY_EXHAUSTED)
+        from tests.unit.helpers_m1 import EXP
+        svc = _real_service(termination_grace_ms=200,
+                            now=float(EXP) - 0.5)
+        out = svc.start(_pair("import time;time.sleep(60)", n=8,
+                              deadline_ms=30000))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        awaited = svc.await_result(handle, timeout=40)
+        assert isinstance(awaited, AwaitedExecution)
+        self.assertEqual(awaited.result.outcome, OUTCOME_DEADLINE_EXCEEDED)
+        self.assertEqual(awaited.result.cause, CAUSE_DEADLINE_VALIDITY_EXHAUSTED,
+                         "la vigencia restante (≈500 ms) acotó el plazo")
+        self.assertEqual(
+            awaited.result.measurements["deadline_effective_ms"], 500)
+
+    def test_terminate_antes_del_deadline_gana_el_primer_hecho(self) -> None:
+        """FIX-M2-R8: terminación externa observada antes de la escalación →
+        `terminated`, aunque el proceso ignore TERM y el deadline acabe
+        matándolo. El estado final con dos booleanos no puede decidir esto."""
+        import time as _time
+        from src.domain.execution_result import (
+            CAUSE_EXTERNAL_TERMINATION, OUTCOME_TERMINATED)
+        svc = _real_service(termination_grace_ms=500)
+        out = svc.start(_pair(
+            "import signal,time\n"
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            "time.sleep(60)\n", n=9, deadline_ms=3000))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        _time.sleep(0.3)   # << soft_termination (3000 - 500 = 2500 ms)
+        self.assertIsInstance(svc.terminate(handle),
+                              TerminationAccepted)
+        awaited = svc.await_result(handle, timeout=40)
+        assert isinstance(awaited, AwaitedExecution)
+        self.assertEqual(awaited.result.outcome, OUTCOME_TERMINATED,
+                         "el primer hecho observado fue la terminación")
+        self.assertEqual(awaited.result.cause, CAUSE_EXTERNAL_TERMINATION)
+        self.assertEqual(awaited.result.exit_status, -9,
+                         "el proceso ignoró TERM: murió por el KILL")
+
     def test_mediciones_congeladas_y_garantias_aplicadas(self) -> None:
         svc = _real_service(termination_grace_ms=700)
         out = svc.start(_pair("import sys;sys.stdout.write('x')", n=4,
@@ -314,6 +390,34 @@ class CicloCompletoTests(unittest.TestCase):
         self.assertIn("termination_grace_ms_applied=700",
                       awaited.result.guarantees_applied)
         self.assertIn("useful_runtime_ms=1800", awaited.result.guarantees_applied)
+
+    def test_la_configuracion_declarada_es_la_aplicada(self) -> None:
+        """FIX-M2-R6 (OAI-M2-03): una única autoridad de configuración — el
+        host compuesto desde el mismo `M2Config` que declara el
+        `GuaranteePlan` aplica exactamente los valores declarados."""
+        from src.domain.start_outcomes import Started as _Started
+        from tests.unit.helpers_m1 import EXP, NOW as _NOW
+        host = PosixSupervisorHost.from_config(
+            M2Config.build(termination_grace_ms=500))
+        svc = StartService(
+            replay_store=MemoryReplayStore(), process_host=host,
+            operator_key=TEST_KEY, active_key_id=TEST_KEY_ID,
+            config=M2Config.build(termination_grace_ms=500),
+            wall_clock=lambda: float(NOW))
+        out = svc.start(_pair("import sys;sys.stdout.write('x')", n=10,
+                              deadline_ms=2500))
+        self.assertIsInstance(out, _Started)
+        assert isinstance(out, _Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        awaited = svc.await_result(handle, timeout=40)
+        assert isinstance(awaited, AwaitedExecution)
+        self.assertEqual(awaited.result.measurements["termination_grace_ms"],
+                         500, "aplicado == declarado")
+        self.assertEqual(awaited.result.measurements["useful_runtime_ms"],
+                         2000, "deadline - gracia declarada")
+        self.assertIn("termination_grace_ms_applied=500",
+                      awaited.result.guarantees_applied)
 
     def test_el_slot_se_libera_al_completar_el_traspaso(self) -> None:
         svc = _real_service()

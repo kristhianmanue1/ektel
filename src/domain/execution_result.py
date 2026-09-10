@@ -103,19 +103,26 @@ class AwaitedExecution:
 
 
 def classify(*, supervision_failure: bool, deadline_hit: bool,
-             validity_bound: bool, externally_terminated: bool
+             validity_bound: bool, externally_terminated: bool,
+             first_terminal_cause: Optional[str] = None
              ) -> tuple[str, str]:
-    """Clasifica por causa con la precedencia de ADR-005 y D-M2-4.
+    """Clasifica por causa con la precedencia de ADR-005, D-M2-4 y FIX-M2-R8.
 
-    Orden: un fallo de supervisión no se disimula; después el **deadline gana
-    en empate** con una terminación solicitada; y entre las dos causas de
-    plazo, **gana vigencia** cuando la vigencia restante acotó la duración.
+    Orden: un fallo de supervisión no se disimula; cuando deadline y
+    terminación externa concurren, decide el **primer hecho observado**
+    (FIX-M2-R8) — `external_termination` → `terminated`; `deadline` o
+    desconocido/empate → `deadline_exceeded` (el deadline gana en empate,
+    ADR-005) —; y entre las dos causas de plazo, **gana vigencia** cuando la
+    vigencia restante acotó la duración (FIX-M2-R1: el dato debe llegar
+    realmente hasta aquí).
     """
     if supervision_failure:
         return OUTCOME_SUPERVISION_FAILED, CAUSE_SUPERVISION_FAILURE
     if deadline_hit:
         cause = (CAUSE_DEADLINE_VALIDITY_EXHAUSTED if validity_bound
                  else CAUSE_DEADLINE_DURATION)
+        if externally_terminated and first_terminal_cause == "external_termination":
+            return OUTCOME_TERMINATED, CAUSE_EXTERNAL_TERMINATION
         return OUTCOME_DEADLINE_EXCEEDED, cause
     if externally_terminated:
         return OUTCOME_TERMINATED, CAUSE_EXTERNAL_TERMINATION

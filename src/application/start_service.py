@@ -196,26 +196,28 @@ class StartService:
         #    consume token: el llamador puede reintentar el mismo token.
         if not self._slots.try_acquire():
             return _failed(REASON_START_FAILED, "capacity:no_slot")
-        try:
-            return self._start_with_slot(plan)
-        except BaseException:
-            # Cualquier salida no contemplada libera el slot antes de propagar.
-            self._slots.release()
-            raise
+        return self._start_with_slot(plan)
 
     def _start_with_slot(self, plan: ExecutionPlan) -> StartOutcome:
-        # 3. Nueva muestra de reloj y recálculo, justo antes del CAS.
-        now_wall = self._read_clock()
-        if now_wall is None:
+        # 3. Nueva muestra de reloj y recálculo, justo antes del CAS. Toda
+        #    salida de esta sección libera el slot: aún no hay spawn.
+        try:
+            now_wall = self._read_clock()
+            if now_wall is None:
+                self._slots.release()
+                return _failed(REASON_START_FAILED, "clock:unavailable")
+            if not now_wall < plan.exp_wall:
+                self._slots.release()
+                return _failed(REASON_CAPABILITY_REJECTED, "token:expired")
+            remaining = remaining_validity_ms(plan.exp_wall, now_wall)
+            validity_bound = (remaining is not None
+                              and validity_exhausted(plan.deadline_ms, remaining))
+            effective_ms = deadline_eff_ms(plan.deadline_ms, plan.exp_wall, now_wall)
+        except BaseException:
+            # Ningún defecto interno puede dejar el slot retenido antes del
+            # spawn: aquí todavía no existe proceso alguno.
             self._slots.release()
-            return _failed(REASON_START_FAILED, "clock:unavailable")
-        if not now_wall < plan.exp_wall:
-            self._slots.release()
-            return _failed(REASON_CAPABILITY_REJECTED, "token:expired")
-        remaining = remaining_validity_ms(plan.exp_wall, now_wall)
-        validity_bound = (remaining is not None
-                          and validity_exhausted(plan.deadline_ms, remaining))
-        effective_ms = deadline_eff_ms(plan.deadline_ms, plan.exp_wall, now_wall)
+            raise
         if effective_ms is None:
             # Vida útil nula: rechazar ANTES del CAS y sin spawn. No se gasta
             # un token para crear un proceso sin tiempo de ejecución.
@@ -223,12 +225,14 @@ class StartService:
             return _failed(REASON_CAPABILITY_REJECTED, "deadline:effective_zero")
 
         # 4. CAS durable.
-        outcome = self._consume(plan.identity_digest)
-        if isinstance(outcome, StartFailed):
+        cas_failure = self._consume(plan.identity_digest)
+        if cas_failure is not None:
             self._slots.release()
-            return outcome
+            return cas_failure
 
-        # 5. Spawn inmediato, sin dependencia externa intermedia.
+        # 5. Spawn inmediato, sin dependencia externa intermedia. Desde aquí
+        #    la liberación/retención del slot la gobierna `_spawn` y, tras el
+        #    spawn, el vigilante único del terminal (FIX-M2-R3).
         return self._spawn(plan, effective_ms, validity_bound)
 
     def _consume(self, identity_digest: str) -> Optional[StartFailed]:
@@ -263,6 +267,16 @@ class StartService:
         # "unknown" y cualquier otro valor: prevalece lo indeterminado.
         return _failed(REASON_START_FAILED_INDETERMINATE, f"{origin}:unknown")
 
+    def _retain_indeterminate(self, identity_digest: str,
+                              detail: str) -> StartFailed:
+        """FIX-M2-R5: todo fallo posterior a un spawn potencial preserva la
+        indeterminación — slot retenido e identidad registrada y recuperable
+        por acto explícito — porque no puede afirmarse que no exista proceso.
+        Liberar capacidad aquí mentiría sobre la cota."""
+        with self._retained_lock:
+            self._retained.append(identity_digest)
+        return _failed(REASON_START_FAILED_INDETERMINATE, detail)
+
     def _spawn(self, plan: ExecutionPlan, effective_ms: int,
                validity_bound: bool = False) -> StartOutcome:
         try:
@@ -274,27 +288,61 @@ class StartService:
             return _failed(REASON_START_FAILED, f"spawn:{exc.safe_detail}"[:512])
         except Exception:
             # No se puede afirmar que no exista un proceso: indeterminado.
-            # El slot NO se libera: podría haber un proceso vivo asociado.
-            # Se **registra** para que exista ruta de recuperación explícita
-            # (H5); liberarlo automáticamente destruiría la razón de retenerlo.
-            with self._retained_lock:
-                self._retained.append(plan.identity_digest)
-            return _failed(REASON_START_FAILED_INDETERMINATE, "spawn:indeterminate")
-        if type(handle_ref) is not str or len(handle_ref) != 16:
-            self._slots.release()
-            return _failed(REASON_START_FAILED_INDETERMINATE, "spawn:handle_ref_invalid")
-        handle = ExecutionHandle(
-            handle_ref=handle_ref,
-            coordinator_instance=self._instance,
-            identity_digest=plan.identity_digest,
-            action_id=plan.action_id,
-            termination_token=mint_termination_token(
-                self._operator_key, self._instance, plan.identity_digest,
-                plan.action_id),
-        )
+            return self._retain_indeterminate(plan.identity_digest,
+                                              "spawn:indeterminate")
+        # Post-spawn (FIX-M2-R5): cualquier rama de aquí en adelante trata el
+        # resultado como indeterminado con retención, nunca como fallo
+        # determinado con liberación de capacidad.
+        if (type(handle_ref) is not str or len(handle_ref) != 16
+                or any(c not in "0123456789abcdef" for c in handle_ref)):
+            return self._retain_indeterminate(plan.identity_digest,
+                                              "spawn:handle_ref_invalid")
+        try:
+            handle = ExecutionHandle(
+                handle_ref=handle_ref,
+                coordinator_instance=self._instance,
+                identity_digest=plan.identity_digest,
+                action_id=plan.action_id,
+                termination_token=mint_termination_token(
+                    self._operator_key, self._instance, plan.identity_digest,
+                    plan.action_id),
+                coordinator=self,
+            )
+        except Exception:
+            return self._retain_indeterminate(plan.identity_digest,
+                                              "spawn:post_spawn_error")
         with self._handles_lock:
             self._handles[handle_ref] = handle
+        try:
+            threading.Thread(target=self._watch_terminal, args=(handle,),
+                             daemon=True).start()
+        except Exception:
+            return self._retain_indeterminate(plan.identity_digest,
+                                              "spawn:watcher_unavailable")
         return Started(handle_ref=handle_ref)
+
+    def _watch_terminal(self, handle: ExecutionHandle) -> None:
+        """FIX-M2-R2/R3: punto único de transferencia de ownership.
+
+        Un solo hilo por acción consume el traspaso del host, deposita el
+        resultado en el handle acuñado —la única ruta con autoridad para
+        hacerlo—, libera el slot exactamente una vez y cierra el registro.
+        Ante ausencia definitiva (canal X/error sin terminal) no se fabrica
+        resultado: el slot también se libera y los esperadores despiertan a
+        una ausencia honesta. Un handle abandonado no retiene slot ni
+        registro: la memoria del resultado depositado es del llamador.
+        """
+        ref = handle.handle_ref
+        try:
+            handoff = self._process_host.collect_terminal(ref, timeout=None)
+            if handoff is not None:
+                handle.deposit_terminal_result(_build_awaited(handoff), self)
+        finally:
+            self._slots.release()
+            with self._handles_lock:
+                if self._handles.get(ref) is handle:
+                    self._handles.pop(ref, None)
+            handle.mark_terminal_closed()
 
     def handle_for(self, handle_ref: str) -> Optional[ExecutionHandle]:
         """Devuelve el handle emitido por **esta** instancia, si vive."""
@@ -338,34 +386,35 @@ class StartService:
                      timeout: float = 30.0) -> object:
         """Espera acotada del resultado y transfiere su propiedad.
 
-        Devuelve `AwaitedExecution` —resultado tipado más stdout/stderr
-        acotados, D-M2-1(a)—. Los buffers son memoria del llamador; ektel no
-        afirma gobernarla. `None` significa **ausencia honesta**: el traspaso
-        terminal no llegó dentro del plazo, y no se fabrica un resultado.
+        FIX-M2-R4: el handle se autentica (MAC de instancia+capacidad+acción)
+        y, si el registro lo contiene, se exige que sea exactamente ese
+        objeto: un impostor con la misma `handle_ref` no puede recolectar el
+        terminal ni desalojar al legítimo. FIX-M2-R2/R3: este método **no**
+        toca el host ni libera slots — el resultado ya fue depositado por el
+        único transferidor (el vigilante del coordinador) o llega dentro del
+        plazo. Un segundo consumidor recibe ausencia honesta, no otra
+        entrega. `None` significa ausencia honesta; no se fabrica resultado.
 
-        El slot se libera al completarse el traspaso, no antes.
+        Los buffers son memoria del llamador; ektel no afirma gobernarla.
         """
         if not isinstance(handle, ExecutionHandle):
             return None
-        handoff = self._process_host.collect_terminal(
-            handle.handle_ref, timeout=timeout)
-        if handoff is None:
-            # Ruta de dobles deterministas: resultado depositado en el handle.
-            stored = handle.take_terminal_result()
-            if stored is not None:
-                self._release_handle(handle)
-            return stored
-        awaited = _build_awaited(handoff)
-        handle.store_terminal_result(awaited)
-        handle.take_terminal_result()
-        self._release_handle(handle)
-        return awaited
-
-    def _release_handle(self, handle: ExecutionHandle) -> None:
+        if not handle.authenticates_for(self._operator_key, self._instance):
+            return None
         with self._handles_lock:
-            self._handles.pop(handle.handle_ref, None)
+            registered = self._handles.get(handle.handle_ref)
+            if registered is not None and registered is not handle:
+                return None
+        if not handle.wait_terminal(timeout):
+            return None
+        stored = handle.take_terminal_result()
+        if stored is None:
+            return None
+        with self._handles_lock:
+            if self._handles.get(handle.handle_ref) is handle:
+                self._handles.pop(handle.handle_ref, None)
         handle.release()
-        self._slots.release()
+        return stored
 
     def _read_clock(self) -> Optional[float]:
         try:
@@ -381,11 +430,14 @@ def _build_awaited(handoff: object) -> AwaitedExecution:
     """Clasifica el traspaso observado. La semántica la fija el coordinador,
     no el adaptador: éste sólo reporta hechos."""
     raw = getattr(handoff, "raw", {})
+    raw_cause = raw.get("first_terminal_cause")
     outcome, cause = classify(
         supervision_failure=bool(raw.get("wall_sample_invalid")),
         deadline_hit=bool(raw.get("deadline_hit")),
         validity_bound=bool(raw.get("validity_bound")),
         externally_terminated=bool(raw.get("externally_terminated")),
+        first_terminal_cause=(raw_cause
+                              if type(raw_cause) is str else None),
     )
     grace_applied = int(raw.get("termination_grace_ms", 0) or 0)
     useful = int(raw.get("useful_runtime_ms", 0) or 0)

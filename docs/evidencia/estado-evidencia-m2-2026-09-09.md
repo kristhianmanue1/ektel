@@ -8,6 +8,18 @@ verificada con diff cero.
 porque G-M2-15 exige revisión adversarial **externa** que ninguna ronda propia
 sustituye.
 
+> **ADDENDUM — ronda correctiva G-M2-15 (2026-09-09).** La reconciliación de
+> los tres informes externos
+> (`../revisiones/g-m2-15/reconciliacion-g-m2-15-2026-09-09.md`) aceptó
+> hallazgos materiales y dejó esta tabla **parcialmente desactualizada**: los
+> gates **G-M2-01, G-M2-05, G-M2-06, G-M2-09, G-M2-10, G-M2-11, G-M2-12
+> (criterios 5/7/9) y G-M2-14** quedan **REABIERTOS** por las obligaciones
+> FIX-M2-R1..R9, y sus filas «verde» de arriba valen como historial de la ronda
+> previa, no como estado actual. El estado vigente de la ronda correctiva, la
+> nueva ejecución de gates y el nuevo congelamiento se registran en el paquete
+> de re-verificación posterior. G-M2-15 = **FIX-AND-RETRY** durante toda la
+> ronda. M2 = OPEN. M3 = BLOCKED.
+
 G-M2-12 pasó a verde el 2026-09-09 **bajo criterio enmendado**
 (`decisiones/enmienda-g-m2-12-2026-09-09.md`), tras verificar individualmente
 sus diez criterios conjuntivos contra el árbol vigente. La firma no produjo la
@@ -28,7 +40,7 @@ Ningún supervisor huérfano tras las suites.
 
 | Gate | Estado | Evidencia |
 |---|---|---|
-| **G-M2-01** revalidación/configuración | verde | Matriz de tipos hostiles (`bool`, floats, subclases), `audit_mode=required` impide inicializar, fuzz de 3000 iteraciones sin divergencias |
+| **G-M2-01** revalidación/configuración | verde | Matriz de tipos hostiles (`bool`, floats, subclases), `audit_mode=required` impide inicializar, fuzz de admisión y de revalidación sin divergencias (fuzz_start_revalidation: 2000 iteraciones por defecto, semilla 20260909 — citación exacta corregida por FIX-M2-R11; la cifra «3000 iteraciones» original de esta tabla no era reproducible al dígito) |
 | **G-M2-02** pureza | verde | Cero `reserve_nonce`, cero `PolicyPort.evaluate`, cero emisión de token; más comprobación estructural de la firma |
 | **G-M2-03** linealización | verde | Reloj final → CAS → spawn; sólo `CONSUMED` cruza |
 | **G-M2-04** reconciliación | verde | Matriz completa de ADR-011 §2.6, incluidos truthy y tipos ajenos |

@@ -57,6 +57,7 @@ from ..domain.deadline import compute_bounds, payload_bounds, wall_sample_valid
 from ..domain.execution_result import TerminalHandoff
 from ..domain.start_request import ExecutionPlan
 from ..ports.process_host import SpawnRejected
+from ..application.config import M2Config
 from . import platform_caps
 
 #: Cota de frame de D-M2-1(a): 64 KiB por stream.
@@ -256,6 +257,16 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
     deadline_hit = threading.Event()
     killed = threading.Event()
     externally_terminated = threading.Event()
+    # FIX-M2-R8: el orden de observación de los hechos terminales se registra
+    # —dos booleanos finales no pueden preservar la causalidad que D-M2-4
+    # exige («primer hecho observado gana; empate → deadline»).
+    order_lock = threading.Lock()
+    first_terminal_cause: list[str] = []
+
+    def record_first(kind: str) -> None:
+        with order_lock:
+            if not first_terminal_cause:
+                first_terminal_cause.append(kind)
 
     stdin_bytes = base64.b64decode(plan["stdin_b64"])
 
@@ -277,6 +288,12 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
     # supervisor (G-M2-08).
     threading.Thread(target=feed_stdin, daemon=True).start()
 
+    # FIX-M2-R9: el PGID del grupo gobernado se captura una sola vez, con el
+    # líder vivo. Resolverlo con `getpgid(child.pid)` en el instante del KILL
+    # fallaría si el líder ya fue recogido y dejaría a los descendientes del
+    # grupo sin el KILL que la escalación les alcanza.
+    governed_pgid = os.getpgid(child.pid)
+
     def terminate_group() -> None:
         """Terminación **best-effort del grupo** del proceso ejecutado.
 
@@ -286,19 +303,20 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         descendientes escapados por `setsid`.
         """
         try:
-            os.killpg(os.getpgid(child.pid), signal.SIGTERM)
+            os.killpg(governed_pgid, signal.SIGTERM)
         except (OSError, ProcessLookupError):
             pass
 
     def kill_group() -> None:
         try:
-            os.killpg(os.getpgid(child.pid), signal.SIGKILL)
+            os.killpg(governed_pgid, signal.SIGKILL)
         except (OSError, ProcessLookupError):
             pass
 
     def on_channel_close() -> None:
         channel_closed.wait()
         externally_terminated.set()
+        record_first("external_termination")
         terminate_group()
 
     threading.Thread(target=on_channel_close, daemon=True).start()
@@ -318,17 +336,20 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         if child.poll() is not None:
             return
         deadline_hit.set()
+        record_first("deadline")
         terminate_group()          # TERM al grupo
+        # FIX-M2-R9: la escalación ya comenzó; el KILL del grupo se intenta
+        # al vencer el hard deadline **aunque el líder ya haya muerto con el
+        # TERM** — los descendientes del grupo gobernado que ignoran TERM no
+        # escapan del KILL. No confundir con `setsid`, que sigue siendo escape
+        # declarado (fuera del grupo gobernado).
         while time.monotonic() < hard_at:
-            if child.poll() is not None:
-                return
             time.sleep(0.02)
-        if child.poll() is None:
-            killed.set()
-            kill_group()           # KILL al grupo
+        killed.set()
+        kill_group()
 
-    threading.Thread(target=deadline_watchdog, daemon=True).start()
-
+    watchdog = threading.Thread(target=deadline_watchdog, daemon=True)
+    watchdog.start()
     assert child.stdout is not None and child.stderr is not None
     credit_timeout_s = int(plan.get("credit_timeout_ms",
                                     DEFAULT_CREDIT_TIMEOUT_MS)) / 1000.0
@@ -361,6 +382,15 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
     collected_mono = time.monotonic()
     duration_ms = int((collected_mono - start_mono) * 1000)
     end_wall = time.time()
+
+    # FIX-M2-R9: el terminal debe reflejar la escalación completa. Si el
+    # líder murió durante la gracia del TERM, el watchdog aún debe llegar al
+    # hard deadline para ejecutar el KILL del grupo; se le espera de forma
+    # acotada (nunca más allá del propio hard deadline más un margen mínimo)
+    # para que `killed` y `post_kill_forced_pipe_close` sean deterministas.
+    hard_deadline_mono = (start_mono
+                          + bounds.hard_deadline_after_start_ms / 1000.0)
+    watchdog.join(timeout=max(0.0, hard_deadline_mono - time.monotonic()) + 0.5)
 
     # Cota de EOF. Tras KILL rige `post_kill_drain_ms` (D-M2-3); en el resto
     # de los casos, la cota general de drenaje. Son hechos distintos.
@@ -423,6 +453,9 @@ def _supervisor_main() -> int:  # pragma: no cover - se ejercita por subproceso
         "deadline_hit": deadline_hit.is_set(),
         "killed": killed.is_set(),
         "externally_terminated": externally_terminated.is_set(),
+        # FIX-M2-R8: primer hecho terminal observado, no sólo el estado final.
+        "first_terminal_cause": (first_terminal_cause[0]
+                                 if first_terminal_cause else None),
         "duration_monotonic_ms": duration_ms,
         "finished_at_wall": end_wall if wall_ok else None,
         "wall_sample_invalid": not wall_ok,
@@ -453,7 +486,39 @@ class SupervisedAction:
 
 
 class PosixSupervisorHost:
-    """`ProcessHost` real: un supervisor dedicado por acción."""
+    """`ProcessHost` real: un supervisor dedicado por acción.
+
+    FIX-M2-R6: los rangos que este adaptador valida son los espejo exactos de
+    D-M2-2/3 (la autoridad normativa es `M2Config`/ADR-012). La vía
+    recomendada de composición es `PosixSupervisorHost.from_config(config)`,
+    que revalida en esta frontera y garantiza que la configuración declarada
+    en el `GuaranteePlan` es la misma que aplica el supervisor.
+    """
+
+    #: Espejo de los rangos congelados (D-M2-3): la validación se aplica
+    #: también en la construcción directa del adaptador.
+    _GRACE_RANGE = (0, 60000)
+    _POST_KILL_RANGE = (1, 10000)
+    _CREDIT_RANGE = (100, 600000)
+    _EOF_RANGE = (1, 10000)
+
+    @classmethod
+    def from_config(cls, config: M2Config) -> "PosixSupervisorHost":
+        """Composición desde la única autoridad de configuración (R6).
+
+        Acepta el `M2Config` validado del despliegue y revalida sus valores
+        en esta frontera: la configuración declarada en el `GuaranteePlan` y
+        la aplicada por el supervisor no pueden divergir por construcción.
+        """
+        if not isinstance(config, M2Config):
+            raise ValueError("from_config exige un M2Config validado")
+        return cls(
+            subreaper_requested=config.subreaper_requested,
+            credit_timeout_ms=config.credit_timeout_ms,
+            eof_drain_timeout_ms=config.eof_drain_timeout_ms,
+            termination_grace_ms=config.termination_grace_ms,
+            post_kill_drain_ms=config.post_kill_drain_ms,
+        )
 
     def __init__(self, *, subreaper_requested: bool = True,
                  credit_timeout_ms: int = DEFAULT_CREDIT_TIMEOUT_MS,
@@ -461,20 +526,29 @@ class PosixSupervisorHost:
                  termination_grace_ms: int = 2000,
                  post_kill_drain_ms: int = 1000,
                  ) -> None:
-        for name, value in (("credit_timeout_ms", credit_timeout_ms),
-                            ("eof_drain_timeout_ms", eof_drain_timeout_ms),
-                            ("post_kill_drain_ms", post_kill_drain_ms)):
-            if type(value) is not int or value <= 0:
-                raise ValueError(f"{name}: entero exacto positivo requerido")
+        for name, value, (low, high) in (
+                ("credit_timeout_ms", credit_timeout_ms, self._CREDIT_RANGE),
+                ("eof_drain_timeout_ms", eof_drain_timeout_ms, self._EOF_RANGE),
+        ):
+            if type(value) is not int or not low <= value <= high:
+                raise ValueError(
+                    f"{name}: entero exacto en rango [{low}, {high}] requerido")
+        if type(termination_grace_ms) is not int or not (
+                self._GRACE_RANGE[0] <= termination_grace_ms
+                <= self._GRACE_RANGE[1]):
+            raise ValueError(
+                "termination_grace_ms: entero exacto en rango [0, 60000]")
+        if type(post_kill_drain_ms) is not int or not (
+                self._POST_KILL_RANGE[0] <= post_kill_drain_ms
+                <= self._POST_KILL_RANGE[1]):
+            raise ValueError(
+                "post_kill_drain_ms: entero exacto en rango [1, 10000]")
         self._caps = platform_caps.detect()
         self._subreaper_requested = subreaper_requested
-        if type(termination_grace_ms) is not int or termination_grace_ms < 0:
-            raise ValueError("termination_grace_ms: entero exacto no negativo")
         self._credit_timeout_ms = credit_timeout_ms
         self._eof_drain_timeout_ms = eof_drain_timeout_ms
         self._termination_grace_ms = termination_grace_ms
         self._post_kill_drain_ms = post_kill_drain_ms
-        self._validity_bound: dict[str, bool] = {}
         self._actions: dict[str, SupervisedAction] = {}
         self._lock = threading.Lock()
 
@@ -609,28 +683,45 @@ class PosixSupervisorHost:
             pass
 
     def await_terminal(self, handle_ref: str,
-                       timeout: float = 30.0) -> Optional[SupervisedAction]:
-        """Espera el handoff terminal. Toda espera es **acotada**."""
+                       timeout: Optional[float] = 30.0
+                       ) -> Optional[SupervisedAction]:
+        """Espera el handoff terminal. Con `timeout` finito, toda espera es
+        **acotada**; con `None`, espera hasta el cierre definitivo (modalidad
+        del vigilante único del coordinador, FIX-M2-R2/R3).
+
+        FIX-M2-R2: la entrega es única y está linealizada en el `pop`. Dos
+        llamadores que esperen el mismo `handle_ref` no pueden obtener ambos
+        la acción: sólo quien extraiga la entrada la recibe; el otro obtiene
+        `None` (ausencia honesta). Antes del pop, una relectura bajo cerrojo
+        confirma que la entrada registrada es exactamente esta acción.
+        """
         with self._lock:
             action = self._actions.get(handle_ref)
         if action is None:
             return None
         if not action.done.wait(timeout):
             return None
-        # H6: el registro no crece sin límite. Entregar el terminal transfiere
-        # la propiedad al llamador y el coordinador deja de retenerlo.
         with self._lock:
+            if self._actions.get(handle_ref) is not action:
+                return None
             self._actions.pop(handle_ref, None)
         return action
 
     def collect_terminal(self, handle_ref: str, *,
-                         timeout: float) -> Optional[TerminalHandoff]:
+                         timeout: Optional[float]) -> Optional[TerminalHandoff]:
         """Vista del puerto sobre el traspaso terminal. `await_terminal`
-        conserva la vista rica del adaptador para su propia caracterización."""
+        conserva la vista rica del adaptador para su propia caracterización.
+
+        FIX-M2-R1: la causalidad de vigencia calculada pre-CAS por el
+        coordinador viaja en el `raw` del traspaso — sin esta fusión,
+        `deadline_validity_exhausted` es inalcanzable end-to-end.
+        """
         action = self.await_terminal(handle_ref, timeout=timeout)
         if action is None or action.terminal is None:
             return None
-        return TerminalHandoff(raw=dict(action.terminal),
+        raw = dict(action.terminal)
+        raw["validity_bound"] = action.validity_bound
+        return TerminalHandoff(raw=raw,
                                stdout=bytes(action.stdout),
                                stderr=bytes(action.stderr))
 
