@@ -1,6 +1,6 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: adjudicación 1 COMPLETA; segunda ronda correctiva REQUERIDA.
+**Estado: segunda ronda correctiva IMPLEMENTADA; re-verificación 2 REQUERIDA.
 G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN. M3 = BLOCKED.**
 
 Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`.
@@ -19,6 +19,13 @@ Adjudicación de la re-verificación correctiva 1:
 **R12..R14 = AUTHORIZABLE-WITHIN-M2**. R1, R2, R3, R5, R7, R8, R9, R10 y R11
 permanecen históricamente `SATISFIED`; R4 y R6 permanecen históricamente
 `NOT-SATISFIED` y sus residuos se trasladan sin reescribirlos.
+
+Segunda ronda correctiva:
+`paquete-reverification-correctiva-02-g-m2-15-2026-09-10.md` — implementación
+de FIX-M2-R12..R14 en `273d09be488d9315e68e140d4553837944c1fd1f`;
+MANIFEST-ROOT `9a2e3d52ad0c807335bc6f0a9cc8384a337c0784f4e91f124542aaba60080c95`.
+R12..R14 quedan `IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION`; no se
+declaran satisfechas por este asiento.
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
@@ -103,8 +110,9 @@ initial_reconciliation    = COMPLETE
 corrective_round_1        = NOT-CONFORMING
 reverification_1          = COMPLETE
 adjudication_1            = COMPLETE
-corrective_round_2        = REQUIRED
-R12..R14                  = AUTHORIZABLE-WITHIN-M2
+corrective_round_2        = IMPLEMENTED
+reverification_2          = REQUIRED
+R12..R14                  = IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION
 G-M2-15                   = CORRECTIVE-FIX-AND-RETRY
 M2                        = OPEN
 M3                        = BLOCKED
@@ -112,5 +120,5 @@ M3                        = BLOCKED
 
 G-M2-01, G-M2-05, G-M2-06, G-M2-10, G-M2-11, G-M2-12, G-M2-14 y G-M2-15
 quedan reabiertos para nueva evidencia. No se promueve ningún gate. El siguiente
-acto separado será la autorización e implementación de la segunda ronda
-correctiva; este expediente no la ejecuta.
+acto separado será la re-verificación externa correctiva 2 sobre el nuevo
+CORRECTIVE-REVIEW-ROOT.
