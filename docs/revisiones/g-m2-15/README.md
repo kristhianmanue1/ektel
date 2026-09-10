@@ -1,7 +1,11 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: 3 de 3 informes recibidos — RECOLECCIÓN COMPLETA — RECONCILIACIÓN
-PENDIENTE.**
+**Estado: 3 de 3 informes recibidos — RECONCILIACIÓN COMPLETA —
+CORRECTIVA REQUERIDA — G-M2-15 = NOT-CONFORMING / FIX-AND-RETRY.**
+
+Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`
+(11 obligaciones FIX-M2-R*; P1×3, P2×6, P3×2 por grupo de causa raíz; 0
+rechazados). La implementación correctiva comienza sólo en un acto posterior.
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
@@ -81,5 +85,6 @@ entre los tres informes; promover G-M2-15; cerrar M2; iniciar M3.
 ## Estado de los hitos
 
 M2 permanece **abierto**. M3 permanece **bloqueado**. G-M2-15:
-`informes originales = 3/3 · collection = COMPLETE · reconciliation = PENDING
-· gate = PENDING`. Nada de este expediente promueve G-M2-15.
+`informes originales = 3/3 · collection = COMPLETE · reconciliation = COMPLETE
+· corrective_action = REQUIRED · gate = NOT-CONFORMING / FIX-AND-RETRY`.
+Nada de este expediente promueve G-M2-15.
