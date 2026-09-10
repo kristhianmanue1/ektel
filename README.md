@@ -1,6 +1,6 @@
 # ektel
 
-**Estado:** M0 cerrado contractualmente y publicado; M1 implementado y cerrado
+**Estado:** M0 cerrado contractualmente y publicado; M1 y M2 implementados y cerrados
 (ver «Estado del ciclo»). Este README documenta intención corregida por
 revisión adversarial más el estado real de implementación; no todas las
 garantías están ya disponibles.
@@ -51,6 +51,15 @@ una sola de las magnitudes que restringe.
 
 ## Estado del ciclo
 
+**Actualización vigente 2026-09-10:** [M2 CLOSED por acto humano](docs/decisiones/cierre-m2-2026-09-10.md),
+con G-M2-01..15 = 15/15 CONFORMING sobre implementación
+`f944493bc9872414daf3d46d7ae230adcbfcf42e` y MANIFEST-ROOT
+`b59553bcb6d4ab696357354ba63ffbae398609ea48426610b447d43bec660588`.
+Se preservan los no-claims y el gap histórico de R13-STRONG; M2 no aísla código
+Python arbitrario co-residente ni promete cota spawn→Started.
+**M3 = BLOCKED / NOT AUTHORIZED**; tampoco se autorizan M4, tags ni releases.
+Los párrafos siguientes conservan la cronología M0/M1, no sustituyen este estado.
+
 La especificación M0–M3 v1.2 alcanzó consenso el 2026-08-20
 (`docs/decisiones/consenso-especificacion-v1-2-2026-08-20.md`) y M0 quedó
 autorizado con alcance cerrado
@@ -99,4 +108,5 @@ admisión M1 (D-P1 ampliada, adenda del dueño 2026-08-22). Hasta entonces no
 se promueven límites de recursos por acuerdo verbal.
 
 La [especificación M0–M3](docs/especificacion/ektel-runtime-m0-m3-v1.md)
-gobierna ese primer ciclo; **M2 y M3 no están autorizados**.
+gobierna ese primer ciclo. M2 fue posteriormente autorizado y cerrado según el
+acta enlazada arriba; M3 requiere una autorización separada y no está autorizado.

@@ -4,13 +4,20 @@
 R12/R15/R16 = SATISFIED dentro del modelo ratificado.
 R13-STRONG = KNOWN-LIMITATION / OUT-OF-THREAT-MODEL / NO-CLAIM;
 conserva provenance BLOCKED-BY-NORMATIVE-GAP y R13/R14 históricos NOT-SATISFIED.
-M2 = OPEN, READY-FOR-HUMAN-M2-CLOSURE; M3 = BLOCKED.**
+M2 = CLOSED por acto humano; M3 = BLOCKED / NOT AUTHORIZED.**
+
+[Acta humana de cierre M2](../../decisiones/cierre-m2-2026-09-10.md):
+acepta el pre-cierre `5b2903b6d91499fafbafe5d0c60fdc5dd79ae036` y cierra
+únicamente la implementación `f944493bc9872414daf3d46d7ae230adcbfcf42e`,
+MANIFEST-ROOT `b59553bcb6d4ab696357354ba63ffbae398609ea48426610b447d43bec660588`.
+No autoriza M3/M4, tags ni releases y no elimina los no-claims ni el gap histórico.
 
 [Adjudicación final y propuesta de pre-cierre](adjudicacion-final-pre-cierre-m2-2026-09-10.md):
 reconstrucción de la ratificación previa, disposición de R12–R16, matriz vigente
 de quince gates y comprobaciones adicionales. Preserva el no-claim de latencia
-spawn→Started y los límites de evidencia. **No cierra M2**: falta acto humano
-separado. Las entradas siguientes conservan los estados históricos de cada etapa,
+spawn→Started y los límites de evidencia. Ese pre-cierre no cerraba M2; el acto
+humano posterior enlazado arriba completa esa decisión. Las entradas siguientes
+conservan los estados históricos de cada etapa,
 no sustituyen este estado vigente.
 
 Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`.

@@ -1,5 +1,11 @@
 # Estado de evidencia M2 — gates G-M2-01..15
 
+> **Estado posterior, 2026-09-10:** [acta humana de cierre M2](../decisiones/cierre-m2-2026-09-10.md):
+> M2 = CLOSED; G-M2-01..15 = 15/15 CONFORMING; M3 = BLOCKED / NOT AUTHORIZED.
+> La [matriz final aceptada](../revisiones/g-m2-15/adjudicacion-final-pre-cierre-m2-2026-09-10.md)
+> reemplaza este snapshot como estado vigente. Se conserva debajo la evidencia
+> histórica, incluidas sus reaperturas; el cierre no reescribe sus resultados.
+
 **Fecha:** 2026-09-09. **Incrementos:** INC-M2-1 a INC-M2-5, más el cierre de
 lagunas posterior. **Manifiesto:** `manifest-m2-sha256.txt`, regeneración
 verificada con diff cero.
