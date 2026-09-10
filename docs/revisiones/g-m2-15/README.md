@@ -1,6 +1,6 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: re-verificación externa correctiva COMPLETA / NOT-CONFORMING.
+**Estado: adjudicación 1 COMPLETA; segunda ronda correctiva REQUERIDA.
 G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN. M3 = BLOCKED.**
 
 Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`.
@@ -11,8 +11,14 @@ Ronda correctiva y paquete de re-verificación:
 Re-verificación externa de la ronda correctiva:
 `informe-reverification-correctiva-01-2026-09-10.md` —
 **CORRECTIVE-FIX-AND-RETRY**; R4 y R6 no satisfechas; findings nuevos
-CORR-M2-01 (P1), CORR-M2-02 (P2) y CORR-M2-03 (P2). Este asiento conserva el
-informe; todavía no adjudica ni redefine la segunda ronda correctiva.
+CORR-M2-01 (P1), CORR-M2-02 (P2) y CORR-M2-03 (P2).
+
+Adjudicación de la re-verificación correctiva 1:
+`adjudicacion-reverification-01-2026-09-10.md` — CORR-M2-01..03
+**ACCEPTED-CONFIRMED**; define FIX-M2-R12..R14 y determina
+**R12..R14 = AUTHORIZABLE-WITHIN-M2**. R1, R2, R3, R5, R7, R8, R9, R10 y R11
+permanecen históricamente `SATISFIED`; R4 y R6 permanecen históricamente
+`NOT-SATISFIED` y sus residuos se trasladan sin reescribirlos.
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
@@ -94,13 +100,17 @@ entre los tres informes; promover G-M2-15; cerrar M2; iniciar M3.
 ```text
 initial_collection        = COMPLETE
 initial_reconciliation    = COMPLETE
-corrective_round_1        = IMPLEMENTED
-corrective_reverification = COMPLETE / NOT-CONFORMING
-corrective_action_2       = REQUIRED
+corrective_round_1        = NOT-CONFORMING
+reverification_1          = COMPLETE
+adjudication_1            = COMPLETE
+corrective_round_2        = REQUIRED
+R12..R14                  = AUTHORIZABLE-WITHIN-M2
 G-M2-15                   = CORRECTIVE-FIX-AND-RETRY
 M2                        = OPEN
 M3                        = BLOCKED
 ```
 
-No se promueve ningún gate. El siguiente acto separado es la adjudicación de
-esta re-verificación y la definición de la segunda ronda correctiva.
+G-M2-01, G-M2-05, G-M2-06, G-M2-10, G-M2-11, G-M2-12, G-M2-14 y G-M2-15
+quedan reabiertos para nueva evidencia. No se promueve ningún gate. El siguiente
+acto separado será la autorización e implementación de la segunda ronda
+correctiva; este expediente no la ejecuta.
