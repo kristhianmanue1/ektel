@@ -9,8 +9,9 @@
 
 **Estado del ciclo:** M0 y M1 cerrados (incluidas M1-R1 y M1-R2).
 **M2 AUTORIZADO e IMPLEMENTADO, pero ABIERTO**: los cinco incrementos están
-completos; **G-M2-15 = CORRECTIVE-FIX-AND-RETRY**. R13 fuerte conserva gap;
-R15/R16 tienen ratificación humana y construcción autorizada, sin cierre de gate.
+completos; **G-M2-01..15 = 15/15 CONFORMING** según adjudicación final.
+**READY-FOR-HUMAN-M2-CLOSURE**, sin cierre humano todavía. R15/R16 SATISFIED;
+R13 fuerte es known limitation/no-claim ratificado, con provenance del gap intacta.
 **M3 no comienza hasta `M2 CLOSED`** por acta humana.
 Ningún tag ni release hasta que M3 cierre.
 
@@ -18,6 +19,7 @@ Ningún tag ni release hasta que M3 cierre.
 
 | Fecha | Decisión | Qué decide | Ruta |
 |---|---|---|---|
+| 10-09 | **Adjudicación final G-M2-15 / pre-cierre** | 15/15 CONFORMING; R15/R16 satisfechas en modelo ratificado; R13 fuerte fuera de claim, gap histórico preservado; M2 aún OPEN y listo para acto humano separado | revisiones/g-m2-15/adjudicacion-final-pre-cierre-m2-2026-09-10.md |
 | 10-09 | **Ratificación R13-STRONG/R15/R16** | No-claim de intérprete compartido; autoriza R15/R16, evidencia local acotada y fail-closed tras pérdida; sin cerrar M2 ni iniciar M3 | decisiones/ratificacion-r13-strong-r15-r16-2026-09-10.md |
 | 09-09 | **Enmienda G-M2-12** | Reconoce la incompatibilidad normativa del criterio original —exigía 16 GiB de payload que §2.2 excluye como presión extrema— y adopta **diez criterios conjuntivos**. Tras reevaluación individual, **G-M2-12 = VERDE**. Prohíbe afirmar que se probó materialmente 16 GiB. **NO** cierra M2 ni sustituye G-M2-15 | decisiones/enmienda-g-m2-12-2026-09-09.md |
 | 09-09 | **Autorización M2** | **M2 AUTORIZADO**, ligado al commit `4beb7ebe…`. Adopta A-M2-1..7 (SpawnFrontier aislar; `admit.py` aditivo; regresión M1 = SCOPE VIOLATION; terminación local y opaca; sin wire nuevo; semántica de revalidación congelada; evolución monotónica). **NO autoriza** M3, M4, tags ni releases | decisiones/autorizacion-m2-2026-09-09.md |
@@ -44,9 +46,9 @@ en `propuestas/` como provenance y no se reescriben.
 
 | Qué | Estado | Ruta |
 |---|---|---|
-| **Expediente G-M2-15** | Tercera corrección R15/R16 y re-verificación independiente PROCEED bajo modelo ratificado; sin promoción de gate | revisiones/g-m2-15/ |
+| **Expediente G-M2-15** | CONFORMING tras adjudicación final; matriz vigente 15/15 y preparación para cierre humano, no M2 CLOSED | revisiones/g-m2-15/ |
 | Encargo de revisión externa (G-M2-15) | 3 familias, misma raíz, sin verse antes del primer veredicto; sin mayoría simple | revisiones/encargo-revision-externa-m2-2026-09-09.md |
-| Estado de evidencia por gate | 14 verdes, 1 pendiente | evidencia/estado-evidencia-m2-2026-09-09.md |
+| Estado histórico de evidencia por gate | Baseline 14 verdes/1 pendiente y addendum de reaperturas; matriz vigente en adjudicación final, no verde heredado | evidencia/estado-evidencia-m2-2026-09-09.md |
 | Caracterización Darwin arm64 (clase L) | 339 OK, 4 skips | evidencia/caracterizacion-m2-darwin-2026-09-09.md |
 | Caracterización Linux aarch64 (clase V) | 339 OK, 1 skip | evidencia/caracterizacion-m2-linux-2026-09-09.md |
 | Manifiesto — identidad de implementación | R15/R16: `MANIFEST-ROOT b59553bc…`, 98 entradas; paquete de revisión identifica el commit exacto | evidencia/manifest-m2-sha256.txt |

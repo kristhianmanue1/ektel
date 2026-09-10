@@ -1,11 +1,17 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: ratificación humana R13-STRONG/R15/R16 asentada; tercera corrección
-R15/R16 implementada; re-verificación independiente 3 PROCEED dentro del modelo
-ratificado. El veredicto no adjudica cierre de gate.
-R13 fuerte BLOCKED-BY-NORMATIVE-GAP; R13/R14 conservan NOT-SATISFIED.
-G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN.
-M3 = BLOCKED.**
+**Estado vigente: G-M2-15 = CONFORMING; 15/15 gates CONFORMING.
+R12/R15/R16 = SATISFIED dentro del modelo ratificado.
+R13-STRONG = KNOWN-LIMITATION / OUT-OF-THREAT-MODEL / NO-CLAIM;
+conserva provenance BLOCKED-BY-NORMATIVE-GAP y R13/R14 históricos NOT-SATISFIED.
+M2 = OPEN, READY-FOR-HUMAN-M2-CLOSURE; M3 = BLOCKED.**
+
+[Adjudicación final y propuesta de pre-cierre](adjudicacion-final-pre-cierre-m2-2026-09-10.md):
+reconstrucción de la ratificación previa, disposición de R12–R16, matriz vigente
+de quince gates y comprobaciones adicionales. Preserva el no-claim de latencia
+spawn→Started y los límites de evidencia. **No cierra M2**: falta acto humano
+separado. Las entradas siguientes conservan los estados históricos de cada etapa,
+no sustituyen este estado vigente.
 
 Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`.
 Ronda correctiva y paquete de re-verificación:
