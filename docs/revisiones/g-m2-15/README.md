@@ -1,11 +1,12 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: 3 de 3 informes recibidos — RECONCILIACIÓN COMPLETA —
-CORRECTIVA REQUERIDA — G-M2-15 = NOT-CONFORMING / FIX-AND-RETRY.**
+**Estado: ronda correctiva FIX-M2-R1..R11 IMPLEMENTADA — re-verificación
+externa PENDIENTE. G-M2-15 = FIX-AND-RETRY.**
 
-Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`
-(11 obligaciones FIX-M2-R*; P1×3, P2×6, P3×2 por grupo de causa raíz; 0
-rechazados). La implementación correctiva comienza sólo en un acto posterior.
+Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`.
+Ronda correctiva y paquete de re-verificación:
+`paquete-reverification-correctiva-g-m2-15-2026-09-09.md`
+(nuevo MANIFEST-ROOT: `365c8a685e563611210cf69680f53cc9c7a32522e9ef5647f6f83ed786a9b470`).
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
@@ -85,6 +86,5 @@ entre los tres informes; promover G-M2-15; cerrar M2; iniciar M3.
 ## Estado de los hitos
 
 M2 permanece **abierto**. M3 permanece **bloqueado**. G-M2-15:
-`informes originales = 3/3 · collection = COMPLETE · reconciliation = COMPLETE
-· corrective_action = REQUIRED · gate = NOT-CONFORMING / FIX-AND-RETRY`.
-Nada de este expediente promueve G-M2-15.
+`corrective_round = IMPLEMENTED · new MANIFEST-ROOT = 365c8a68…a9b470 ·
+gate = FIX-AND-RETRY (re-verificación externa pendiente)`.
