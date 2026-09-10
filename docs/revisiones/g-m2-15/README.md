@@ -1,8 +1,10 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: segunda ronda correctiva IMPLEMENTADA; re-verificación 2
-COMPLETE / NOT-CONFORMING (R13 y R14 no satisfechas). Tercera acción
-correctiva REQUERIDA. G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN.
+**Estado: adjudicación arquitectónica post-Astra COMPLETE / DOCUMENTARY-ONLY.
+R13 fuerte BLOCKED-BY-NORMATIVE-GAP; R13/R14 permanecen NOT-SATISFIED.
+R15/R16 AUTHORIZABLE-WITHIN-M2, no implementadas. Ratificación normativa
+HUMAN-NORMATIVE-DECISION-REQUIRED; tercera acción correctiva
+PENDING-AUTHORIZATION. G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN.
 M3 = BLOCKED.**
 
 Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`.
@@ -33,12 +35,29 @@ Re-verificación externa de la ronda correctiva 2:
 `informe-reverification-correctiva-02-2026-09-10.md` —
 **CORRECTIVE-FIX-AND-RETRY**; R12 `SATISFIED`; R13 y R14 `NOT-SATISFIED`;
 findings FIND-R13-A (P2), FIND-R13-B (P3) y FIND-R14-A (P2), todos
-REPRODUCIDO. Conservado íntegro; no reinterpretado por este asiento; sin
-adjudicación todavía.
+REPRODUCIDO. Conservado íntegro; el asiento original no lo adjudicó.
+
+Adjudicación arquitectónica posterior:
+[adjudicacion-arquitectonica-r13-r14-2026-09-10.md](adjudicacion-arquitectonica-r13-r14-2026-09-10.md).
+Acepta los tres findings por la evidencia preservada y el contraste estático;
+no reejecuta sus sondas. Distingue encapsulación, disciplina de capabilities
+y frontera de seguridad. Conserva R13 fuerte como no satisfecha y registra
+su gap; propone R15 (terminal writer separation) y R16 (provenance local de
+emisión). No adopta silenciosamente un nuevo threat model ni modifica contratos
+congelados: no-claim, handoff/reinicio, capacidad de evidencia y encaje en
+Admission requieren decisión normativa humana. Diseño A recomendado como
+candidato local; aislamiento fuerte queda fuera, sin asignarlo a M3.
+
+MANIFEST-ROOT vigente verificado y preservado:
+`9a2e3d52ad0c807335bc6f0a9cc8384a337c0784f4e91f124542aaba60080c95`.
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
-## Identidades congeladas
+## Identidades congeladas de la revisión original
+
+Las instrucciones de checkout siguientes corresponden al ciclo original de
+tres revisores. No reemplazan las identidades posteriores de cada ronda ni
+el HEAD documental de entrada de la adjudicación arquitectónica.
 
 | Qué | Valor |
 |---|---|
@@ -121,10 +140,15 @@ reverification_1          = COMPLETE
 adjudication_1            = COMPLETE
 corrective_round_2        = IMPLEMENTED
 reverification_2          = COMPLETE / NOT-CONFORMING
+architectural_adjudication = COMPLETE / DOCUMENTARY-ONLY
 R12                       = SATISFIED
 R13                       = NOT-SATISFIED
+R13-STRONG                = BLOCKED-BY-NORMATIVE-GAP
 R14                       = NOT-SATISFIED
-corrective_action_3       = REQUIRED
+R15                       = AUTHORIZABLE-WITHIN-M2
+R16                       = AUTHORIZABLE-WITHIN-M2
+normative_ratification    = HUMAN-NORMATIVE-DECISION-REQUIRED
+corrective_action_3       = PENDING-AUTHORIZATION
 
 G-M2-15 = CORRECTIVE-FIX-AND-RETRY
 M2       = OPEN
@@ -132,8 +156,9 @@ M3       = BLOCKED
 ```
 
 G-M2-01, G-M2-05, G-M2-06, G-M2-10, G-M2-11, G-M2-12, G-M2-14 y G-M2-15
-permanecen con evidencia nueva de la re-verificación 2. No se promueve ningún
-gate. El siguiente acto separado será la adjudicación de la re-verificación
-correctiva 2 (CORR de FIND-R13-A, FIND-R13-B y FIND-R14-A) y la definición de
-la tercera ronda correctiva; este asiento sólo preserva el informe y su
-veredicto.
+permanecen con evidencia de la re-verificación 2. No se promueve ningún gate.
+La adjudicación arquitectónica no equivale a implementación ni a aceptación
+del diff futuro. El siguiente acto separado es la ratificación normativa
+identificada en su §9 y, posteriormente, la autorización concreta de la
+tercera acción correctiva. R12 permanece satisfecha por la evidencia existente;
+R13/R14 no se cierran mediante el nuevo alcance propuesto de R15/R16.
