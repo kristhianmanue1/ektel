@@ -1,7 +1,9 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: segunda ronda correctiva IMPLEMENTADA; re-verificación 2 REQUERIDA.
-G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN. M3 = BLOCKED.**
+**Estado: segunda ronda correctiva IMPLEMENTADA; re-verificación 2
+COMPLETE / NOT-CONFORMING (R13 y R14 no satisfechas). Tercera acción
+correctiva REQUERIDA. G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN.
+M3 = BLOCKED.**
 
 Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`.
 Ronda correctiva y paquete de re-verificación:
@@ -26,6 +28,13 @@ de FIX-M2-R12..R14 en `273d09be488d9315e68e140d4553837944c1fd1f`;
 MANIFEST-ROOT `9a2e3d52ad0c807335bc6f0a9cc8384a337c0784f4e91f124542aaba60080c95`.
 R12..R14 quedan `IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION`; no se
 declaran satisfechas por este asiento.
+
+Re-verificación externa de la ronda correctiva 2:
+`informe-reverification-correctiva-02-2026-09-10.md` —
+**CORRECTIVE-FIX-AND-RETRY**; R12 `SATISFIED`; R13 y R14 `NOT-SATISFIED`;
+findings FIND-R13-A (P2), FIND-R13-B (P3) y FIND-R14-A (P2), todos
+REPRODUCIDO. Conservado íntegro; no reinterpretado por este asiento; sin
+adjudicación todavía.
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
@@ -111,14 +120,20 @@ corrective_round_1        = NOT-CONFORMING
 reverification_1          = COMPLETE
 adjudication_1            = COMPLETE
 corrective_round_2        = IMPLEMENTED
-reverification_2          = REQUIRED
-R12..R14                  = IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION
-G-M2-15                   = CORRECTIVE-FIX-AND-RETRY
-M2                        = OPEN
-M3                        = BLOCKED
+reverification_2          = COMPLETE / NOT-CONFORMING
+R12                       = SATISFIED
+R13                       = NOT-SATISFIED
+R14                       = NOT-SATISFIED
+corrective_action_3       = REQUIRED
+
+G-M2-15 = CORRECTIVE-FIX-AND-RETRY
+M2       = OPEN
+M3       = BLOCKED
 ```
 
 G-M2-01, G-M2-05, G-M2-06, G-M2-10, G-M2-11, G-M2-12, G-M2-14 y G-M2-15
-quedan reabiertos para nueva evidencia. No se promueve ningún gate. El siguiente
-acto separado será la re-verificación externa correctiva 2 sobre el nuevo
-CORRECTIVE-REVIEW-ROOT.
+permanecen con evidencia nueva de la re-verificación 2. No se promueve ningún
+gate. El siguiente acto separado será la adjudicación de la re-verificación
+correctiva 2 (CORR de FIND-R13-A, FIND-R13-B y FIND-R14-A) y la definición de
+la tercera ronda correctiva; este asiento sólo preserva el informe y su
+veredicto.
