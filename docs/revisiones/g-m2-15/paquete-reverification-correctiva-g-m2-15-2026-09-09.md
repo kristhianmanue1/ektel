@@ -18,10 +18,18 @@ satisfechas FIX-M2-R1..R11 sin introducir regresiones ni ampliar M2?
 
 ## 2. Qué cambió (diff correctivo)
 
-`git diff dc3da3f..0475d9f -- src tests scripts` — 16 archivos: 6 de `src/`,
-8 de `tests/`, sin `contracts/`, sin schemas, sin workflows, sin rutas nuevas
-fuera del inventario de 45. El diff de manifiestos confirma exactamente esos
-14 archivos de código/prueba (ninguna ruta añadida ni retirada):
+Conteo del commit correctivo completo `dc3da3f..0475d9f`: **16 archivos** —
+6 de `src/`, 8 de `tests/` y 2 de `docs/`. El diff de re-verificación,
+restringido a código y pruebas, es:
+
+```
+git diff dc3da3f..0475d9f -- src tests scripts
+```
+
+— **14 archivos** (6 de `src/`, 8 de `tests/`; `scripts/`: 0 cambios). Sin
+`contracts/`, sin schemas, sin workflows, sin rutas nuevas fuera del
+inventario de 45. El diff de manifiestos confirma exactamente esos 14
+archivos de código/prueba (ninguna ruta añadida ni retirada):
 
 ```
 src/adapters/posix_supervisor.py      tests/escape/test_supervisor_characterization.py
