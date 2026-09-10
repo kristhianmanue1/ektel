@@ -4,9 +4,14 @@
 lagunas posterior. **Manifiesto:** `manifest-m2-sha256.txt`, regeneración
 verificada con diff cero.
 
-**Estado global: 13 gates verdes, 1 parcial declarado, 1 pendiente. M2 sigue
-sin ser cerrable**, porque G-M2-15 exige revisión adversarial **externa** que
-ninguna ronda propia sustituye.
+**Estado global: 14 gates verdes, 1 pendiente. M2 sigue sin ser cerrable**,
+porque G-M2-15 exige revisión adversarial **externa** que ninguna ronda propia
+sustituye.
+
+G-M2-12 pasó a verde el 2026-09-09 **bajo criterio enmendado**
+(`decisiones/enmienda-g-m2-12-2026-09-09.md`), tras verificar individualmente
+sus diez criterios conjuntivos contra el árbol vigente. La firma no produjo la
+promoción por sí sola: la produjo la reevaluación que la firma ordenó.
 
 ## Corridas base
 
@@ -34,22 +39,24 @@ Ningún supervisor huérfano tras las suites.
 | **G-M2-09** deadline | **verde** | Aritmética pura completa y TERM→KILL con procesos reales. **Cerrado**: `wall_sample_valid` extraída a dominio y probada —regresión, no finitos, tipos hostiles— y enlazada con `supervision_failed` |
 | **G-M2-10** terminación | verde | Handle válido, forjado, cruzado, de otra acción, repetido, post-resultado, liberado. Evento de rechazo **pendiente M3**, no verde ficticio |
 | **G-M2-11** recolección/plan | **verde** | **Cerrado**: se mide que el descendiente **observado** muere con el grupo y que el **escapado** sobrevive y se declara; el supervisor se recoge tras el terminal. Subreaper aplicado realmente en Linux, `unsupported` en Darwin |
-| **G-M2-12** capacidad | **PARCIAL — tensión normativa declarada** | Cota respetada bajo carrera, sin gastar token, liberación en handoff, slot indeterminado observable y recuperable. Fórmulas confirmadas aritméticamente: 64 acciones a límites máximos dan **8 GiB + 8 MiB estables y 16 GiB + 8 MiB de pico**. Modelo lineal comprobado empíricamente a escala reducida (6 acciones × 256 KiB). **La corrida a escala máxima NO se ejecuta** — ver §Tensión |
+| **G-M2-12** capacidad | **VERDE** — bajo criterio enmendado | Los **diez criterios conjuntivos** de `decisiones/enmienda-g-m2-12-2026-09-09.md` verificados individualmente contra el árbol vigente. La cota máxima fue demostrada **analíticamente** y la implementación comprobada **empíricamente a escala segura** |
 | **G-M2-13** plataforma | verde | Suites separadas; skips y degradaciones declarados |
 | **G-M2-14** regresión | verde | M1-R2, gates M0/M1, `mypy --strict`, vectores diff cero, fuzzers |
 | **G-M2-15** frontera | **PENDIENTE** | El diff no toca schemas, workflows, dependencias, M3, x86_64, tag ni release. Falta la **revisión adversarial externa `PROCEED` sobre el código real** |
 
-## Tensión normativa en G-M2-12 — enmienda de criterio propuesta
+## G-M2-12 — enmienda de criterio, aprobada y reevaluada
 
-Existe un **borrador de enmienda de criterio** en
-`docs/propuestas/borrador-enmienda-g-m2-12-2026-09-09.md`, que reevalúa la
-evidencia existente contra un criterio de diez puntos y concluye que los diez
-están cubiertos.
+La enmienda fue **aprobada por el dueño el 2026-09-09** y asentada en
+`docs/decisiones/enmienda-g-m2-12-2026-09-09.md`. El borrador se conserva en
+`docs/propuestas/borrador-enmienda-g-m2-12-2026-09-09.md` como provenance y no
+se reescribe.
 
-**Ese borrador no promueve el gate.** Mientras no exista acta humana de
-enmienda, el estado es y permanece
-`G-M2-12 = PARCIAL — tensión normativa declarada`. Tras la firma corresponde
-rehacer la reevaluación contra el árbol vigente en ese momento.
+La reevaluación se ejecutó **contra el árbol vigente**, verificando los diez
+criterios uno por uno, y sólo entonces se promovió el gate. Detalle por
+criterio en §5 del acta.
+
+**La enmienda no modificó implementación**, comprobado mecánicamente: los
+digests de código del manifiesto son idénticos a los de `17da65e`.
 
 ## Origen de la tensión
 
@@ -91,10 +98,16 @@ utilidad, **no** su independencia.
 
 ## Qué falta para cerrar M2
 
-1. resolver G-M2-12: aceptar la confirmación aritmética **con acta**, o
-   autorizar la corrida a escala;
-2. obtener la **revisión adversarial externa** sobre el diff real (G-M2-15);
-3. resolver sus findings de forma explícita;
-4. acta humana de cierre.
+1. ~~resolver G-M2-12~~ — **hecho** el 2026-09-09 por enmienda de criterio y
+   reevaluación individual de los diez puntos;
+2. obtener la **revisión adversarial externa** sobre el diff real (G-M2-15),
+   conforme a `revisiones/encargo-revision-externa-m2-2026-09-09.md`: tres
+   familias de modelo distintas, misma raíz, sin verse antes del primer
+   veredicto;
+3. reconciliar por evidencia, **nunca por mayoría simple**: un hallazgo P0/P1
+   reproducible debe resolverse aunque dos revisores emitan `PROCEED`;
+4. resolver los findings y, si los hubo, reejecutar gates afectados, regresión
+   completa y re-verificación externa del diff correctivo;
+5. acta humana de cierre.
 
-Hasta entonces, **M2 permanece abierto**.
+Hasta entonces, **M2 permanece abierto** y **M3 no comienza**.
