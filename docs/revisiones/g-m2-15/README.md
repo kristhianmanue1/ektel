@@ -1,12 +1,18 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: ronda correctiva FIX-M2-R1..R11 IMPLEMENTADA — re-verificación
-externa PENDIENTE. G-M2-15 = FIX-AND-RETRY.**
+**Estado: re-verificación externa correctiva COMPLETA / NOT-CONFORMING.
+G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN. M3 = BLOCKED.**
 
 Reconciliación por evidencia: `reconciliacion-g-m2-15-2026-09-09.md`.
 Ronda correctiva y paquete de re-verificación:
 `paquete-reverification-correctiva-g-m2-15-2026-09-09.md`
 (nuevo MANIFEST-ROOT: `365c8a685e563611210cf69680f53cc9c7a32522e9ef5647f6f83ed786a9b470`).
+
+Re-verificación externa de la ronda correctiva:
+`informe-reverification-correctiva-01-2026-09-10.md` —
+**CORRECTIVE-FIX-AND-RETRY**; R4 y R6 no satisfechas; findings nuevos
+CORR-M2-01 (P1), CORR-M2-02 (P2) y CORR-M2-03 (P2). Este asiento conserva el
+informe; todavía no adjudica ni redefine la segunda ronda correctiva.
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
@@ -85,6 +91,16 @@ entre los tres informes; promover G-M2-15; cerrar M2; iniciar M3.
 
 ## Estado de los hitos
 
-M2 permanece **abierto**. M3 permanece **bloqueado**. G-M2-15:
-`corrective_round = IMPLEMENTED · new MANIFEST-ROOT = 365c8a68…a9b470 ·
-gate = FIX-AND-RETRY (re-verificación externa pendiente)`.
+```text
+initial_collection        = COMPLETE
+initial_reconciliation    = COMPLETE
+corrective_round_1        = IMPLEMENTED
+corrective_reverification = COMPLETE / NOT-CONFORMING
+corrective_action_2       = REQUIRED
+G-M2-15                   = CORRECTIVE-FIX-AND-RETRY
+M2                        = OPEN
+M3                        = BLOCKED
+```
+
+No se promueve ningún gate. El siguiente acto separado es la adjudicación de
+esta re-verificación y la definición de la segunda ronda correctiva.
