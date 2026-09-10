@@ -180,6 +180,17 @@ class AdmissionService:
         """`key_id` activo (adenda final regla 1)."""
         return self._active_key_id
 
+    @property
+    def m2_config_fingerprint(self) -> Optional[str]:
+        """Acreditación local del perfil declarado por Admission (R14).
+
+        `None` preserva la ruta M1 sin configuración M2. El fingerprint no se
+        añade al `AdmissionOutcome` wire ni a los assumptions congelados.
+        """
+        if self._m2_config is None:
+            return None
+        return self._m2_config.fingerprint
+
     def admit(self, raw: bytes) -> AdmissionOutcome:
         """Admite un `ActionRequest` (bytes wire) según el orden §6.2."""
         # 1. Capa de contrato del documento exterior (§5.8).

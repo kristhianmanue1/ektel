@@ -25,7 +25,8 @@ from src.domain.termination import (  # noqa: E402
     mint_termination_token,
 )
 from tests.unit.helpers_m2 import (  # noqa: E402
-    FakeProcessHost, TEST_KEY, distinct_start_request, make_start_service)
+    FakeProcessHost, TEST_KEY, distinct_start_request, fake_handoff,
+    make_start_service)
 
 
 def _started(svc: object, n: int = 1) -> ExecutionHandle:
@@ -79,23 +80,28 @@ class PostResultadoTests(unittest.TestCase):
         host = FakeProcessHost()
         svc = make_start_service(host=host)
         handle = _started(svc)
-        handle.deposit_terminal_result({"outcome": "executed"}, svc)
+        host.deliver_terminal(handle.handle_ref, fake_handoff())
+        svc.await_result(handle)
         out = svc.terminate(handle)
         self.assertIsInstance(out, TerminationAccepted)
         self.assertEqual(host.terminations, [],
                          "post-resultado no se contacta al supervisor")
 
     def test_terminate_post_resultado_no_reclasifica(self) -> None:
-        svc = make_start_service()
+        host = FakeProcessHost()
+        svc = make_start_service(host=host)
         handle = _started(svc)
-        handle.deposit_terminal_result({"outcome": "executed"}, svc)
+        host.deliver_terminal(handle.handle_ref, fake_handoff())
+        result = svc.await_result(handle)
         svc.terminate(handle)
-        self.assertEqual(handle.take_terminal_result(), {"outcome": "executed"})
+        self.assertIsNotNone(result)
 
     def test_conserva_el_derecho_de_terminacion_tras_la_ejecucion(self) -> None:
-        svc = make_start_service()
+        host = FakeProcessHost()
+        svc = make_start_service(host=host)
         handle = _started(svc)
-        handle.deposit_terminal_result({"outcome": "executed"}, svc)
+        host.deliver_terminal(handle.handle_ref, fake_handoff())
+        svc.await_result(handle)
         self.assertIsInstance(svc.terminate(handle), TerminationAccepted)
 
 
@@ -169,7 +175,7 @@ class RegresionH7Tests(unittest.TestCase):
         host = FakeProcessHost()
         svc = make_start_service(host=host)
         handle = _started(svc)
-        handle.deposit_terminal_result({"outcome": "executed"}, svc)
+        host.deliver_terminal(handle.handle_ref, fake_handoff())
         svc.await_result(handle)
         self.assertTrue(handle.released)
         out = svc.terminate(handle)

@@ -39,6 +39,7 @@ import math
 import secrets
 import threading
 import time
+import weakref
 from typing import Callable, Optional
 
 from ..domain.deadline import deadline_eff_ms, remaining_validity_ms, validity_exhausted
@@ -105,6 +106,82 @@ class _SlotPool:
             return self._used
 
 
+class _HandleRecord:
+    """Estado terminal privado, separado del handle público y del runtime.
+
+    Esta referencia es la capability interna de depósito de FIX-M2-R13. Sólo
+    el vigilante la recibe; datos equivalentes o una referencia pública al
+    servicio no permiten reconstruirla.
+    """
+
+    __slots__ = ("handle_ref", "_lock", "_ready", "_result", "_closed",
+                 "_consumed", "_deposit_authority")
+
+    def __init__(self, handle_ref: str, deposit_authority: object) -> None:
+        self.handle_ref = handle_ref
+        self._lock = threading.Lock()
+        self._ready = threading.Event()
+        self._result: Optional[AwaitedExecution] = None
+        self._closed = False
+        self._consumed = False
+        self._deposit_authority: Optional[object] = deposit_authority
+
+    def deposit_once(self, result: object, authority: object) -> bool:
+        """Transición terminal tipada, interna y exactamente una vez."""
+        if (type(result) is not AwaitedExecution
+                or type(result.result) is not ExecutionResult
+                or type(result.stdout) is not bytes
+                or type(result.stderr) is not bytes):
+            return False
+        with self._lock:
+            if (authority is not self._deposit_authority
+                    or self._closed or self._consumed
+                    or self._result is not None):
+                return False
+            self._result = result
+            self._closed = True
+            self._deposit_authority = None
+        self._ready.set()
+        return True
+
+    def close_without_result(self, authority: object) -> bool:
+        """Cierre definitivo honesto; nunca reemplaza un terminal válido."""
+        with self._lock:
+            if authority is not self._deposit_authority:
+                return False
+            self._closed = True
+            self._deposit_authority = None
+        self._ready.set()
+        return True
+
+    def wait(self, timeout: Optional[float]) -> bool:
+        return self._ready.wait(timeout)
+
+    def take_once(self) -> Optional[AwaitedExecution]:
+        with self._lock:
+            if self._consumed or self._result is None:
+                return None
+            result = self._result
+            self._result = None
+            self._consumed = True
+            return result
+
+    @property
+    def terminal_closed(self) -> bool:
+        with self._lock:
+            return self._closed
+
+
+class _PendingCapability:
+    """Custodia fuerte hasta la primera adquisición mediante `handle_for`."""
+
+    __slots__ = ("handle", "record")
+
+    def __init__(self, handle: ExecutionHandle, record: _HandleRecord) -> None:
+        self.handle = handle
+        self.record = record
+
+
 class StartService:
     """Coordinador runtime: dueño de los handles (ADR-012 D-M2-4).
 
@@ -120,6 +197,7 @@ class StartService:
         operator_key: bytes,
         active_key_id: str,
         config: Optional[M2Config] = None,
+        declared_config_fingerprint: Optional[str] = None,
         skew_tolerance_s: float = 30.0,
         wall_clock: Callable[[], float] = time.time,
     ) -> None:
@@ -128,6 +206,7 @@ class StartService:
         self._config = config if config is not None else M2Config.build()
         self._replay_store = replay_store
         self._process_host = process_host
+        self._declared_config_fingerprint = declared_config_fingerprint
         self._operator_key = operator_key
         self._active_key_id = active_key_id
         self._skew_tolerance_s = skew_tolerance_s
@@ -135,8 +214,18 @@ class StartService:
         self._slots = _SlotPool(self._config.max_concurrent_actions)
         # Identidad de esta instancia: reiniciar invalida los handles emitidos.
         self._instance = secrets.token_hex(8)
-        self._handles: dict[str, ExecutionHandle] = {}
+        # FIX-M2-R12 — lifetimes separados:
+        # - `_operations`: espera y cierre operacional del terminal;
+        # - `_pending_handles`: custodia fuerte hasta la primera adquisición;
+        # - `_acquired`: terminal/tombstone débil ligado a identidad exacta.
+        self._operations: dict[str, _HandleRecord] = {}
+        self._pending_handles: dict[str, _PendingCapability] = {}
+        self._acquired: weakref.WeakKeyDictionary[
+            ExecutionHandle, _HandleRecord] = weakref.WeakKeyDictionary()
         self._handles_lock = threading.Lock()
+        # Una capability aún no adquirida tiene su propia cota. Saturarla
+        # rechaza antes del CAS/spawn; nunca se desaloja una ya prometida.
+        self._pending_capacity = _SlotPool(self._config.max_concurrent_actions)
         # Slots retenidos por indeterminación, con su identidad, para que la
         # capacidad perdida sea observable y recuperable por acto explícito.
         # Cerrojo propio: es un invariante distinto del registro de handles y
@@ -147,6 +236,10 @@ class StartService:
     @property
     def coordinator_instance(self) -> str:
         return self._instance
+
+    @property
+    def config_fingerprint(self) -> str:
+        return self._config.fingerprint
 
     @property
     def slots_in_use(self) -> int:
@@ -160,6 +253,16 @@ class StartService:
         """
         with self._retained_lock:
             return tuple(self._retained)
+
+    @property
+    def pending_handle_count(self) -> int:
+        with self._handles_lock:
+            return len(self._pending_handles)
+
+    @property
+    def operational_record_count(self) -> int:
+        with self._handles_lock:
+            return len(self._operations)
 
     def release_indeterminate(self, identity_digest: str) -> bool:
         """Libera un slot retenido por indeterminación.
@@ -178,6 +281,12 @@ class StartService:
 
     def start(self, request: object) -> StartOutcome:
         """Ejecuta la linealización de ADR-011 §2.6."""
+        # FIX-M2-R14: la composición se rechaza antes de revalidar, CAS o
+        # spawn. Un host sin acreditación no adquiere autoridad de ejecución.
+        configuration_error = self._check_configuration_authority(
+            self._declared_config_fingerprint, self._process_host)
+        if configuration_error is not None:
+            return _failed(REASON_START_FAILED, configuration_error)
         if not isinstance(request, StartRequest):
             return _failed(REASON_CAPABILITY_REJECTED, "request:type")
 
@@ -192,11 +301,34 @@ class StartService:
         if isinstance(plan, StartFailed):
             return plan
 
-        # 2. Slot antes de cualquier efecto irreversible. Sin capacidad no se
-        #    consume token: el llamador puede reintentar el mismo token.
+        # 2. Slot y custodia de capability antes de cualquier efecto
+        #    irreversible. Ambas saturaciones dejan el token sin consumir.
         if not self._slots.try_acquire():
             return _failed(REASON_START_FAILED, "capacity:no_slot")
+        if not self._pending_capacity.try_acquire():
+            self._slots.release()
+            return _failed(REASON_START_FAILED, "capacity:no_handle_slot")
         return self._start_with_slot(plan)
+
+    def _check_configuration_authority(
+        self, declared: Optional[str], process_host: ProcessHost,
+    ) -> Optional[str]:
+        expected = self._config.fingerprint
+        if (type(declared) is not str or len(declared) != 64
+                or any(c not in "0123456789abcdef" for c in declared)):
+            return "config:declared_fingerprint_missing"
+        if declared != expected:
+            return "config:declared_fingerprint_mismatch"
+        try:
+            applied: object = process_host.config_fingerprint
+        except Exception:
+            return "config:host_fingerprint_missing"
+        if (type(applied) is not str or len(applied) != 64
+                or any(c not in "0123456789abcdef" for c in applied)):
+            return "config:host_fingerprint_missing"
+        if applied != expected:
+            return "config:host_fingerprint_mismatch"
+        return None
 
     def _start_with_slot(self, plan: ExecutionPlan) -> StartOutcome:
         # 3. Nueva muestra de reloj y recálculo, justo antes del CAS. Toda
@@ -205,9 +337,11 @@ class StartService:
             now_wall = self._read_clock()
             if now_wall is None:
                 self._slots.release()
+                self._pending_capacity.release()
                 return _failed(REASON_START_FAILED, "clock:unavailable")
             if not now_wall < plan.exp_wall:
                 self._slots.release()
+                self._pending_capacity.release()
                 return _failed(REASON_CAPABILITY_REJECTED, "token:expired")
             remaining = remaining_validity_ms(plan.exp_wall, now_wall)
             validity_bound = (remaining is not None
@@ -217,17 +351,20 @@ class StartService:
             # Ningún defecto interno puede dejar el slot retenido antes del
             # spawn: aquí todavía no existe proceso alguno.
             self._slots.release()
+            self._pending_capacity.release()
             raise
         if effective_ms is None:
             # Vida útil nula: rechazar ANTES del CAS y sin spawn. No se gasta
             # un token para crear un proceso sin tiempo de ejecución.
             self._slots.release()
+            self._pending_capacity.release()
             return _failed(REASON_CAPABILITY_REJECTED, "deadline:effective_zero")
 
         # 4. CAS durable.
         cas_failure = self._consume(plan.identity_digest)
         if cas_failure is not None:
             self._slots.release()
+            self._pending_capacity.release()
             return cas_failure
 
         # 5. Spawn inmediato, sin dependencia externa intermedia. Desde aquí
@@ -275,16 +412,21 @@ class StartService:
         Liberar capacidad aquí mentiría sobre la cota."""
         with self._retained_lock:
             self._retained.append(identity_digest)
+        # No hubo `Started`: no existe capability prometida que custodiar.
+        self._pending_capacity.release()
         return _failed(REASON_START_FAILED_INDETERMINATE, detail)
 
     def _spawn(self, plan: ExecutionPlan, effective_ms: int,
                validity_bound: bool = False) -> StartOutcome:
         try:
             handle_ref = self._process_host.spawn(
-                plan, deadline_eff_ms=effective_ms, validity_bound=validity_bound)
+                plan, deadline_eff_ms=effective_ms,
+                config_fingerprint=self._config.fingerprint,
+                validity_bound=validity_bound)
         except SpawnRejected as exc:
             # Fallo explícito y síncrono ANTES de crear proceso: determinado.
             self._slots.release()
+            self._pending_capacity.release()
             return _failed(REASON_START_FAILED, f"spawn:{exc.safe_detail}"[:512])
         except Exception:
             # No se puede afirmar que no exista un proceso: indeterminado.
@@ -306,48 +448,75 @@ class StartService:
                 termination_token=mint_termination_token(
                     self._operator_key, self._instance, plan.identity_digest,
                     plan.action_id),
-                coordinator=self,
             )
         except Exception:
             return self._retain_indeterminate(plan.identity_digest,
                                               "spawn:post_spawn_error")
+        deposit_authority = object()
+        record = _HandleRecord(handle_ref, deposit_authority)
+        pending = _PendingCapability(handle, record)
         with self._handles_lock:
-            self._handles[handle_ref] = handle
+            if (handle_ref in self._operations
+                    or handle_ref in self._pending_handles):
+                return self._retain_indeterminate(
+                    plan.identity_digest, "spawn:handle_ref_collision")
+            self._operations[handle_ref] = record
+            self._pending_handles[handle_ref] = pending
         try:
-            threading.Thread(target=self._watch_terminal, args=(handle,),
+            threading.Thread(target=self._watch_terminal,
+                             args=(handle_ref, record, deposit_authority),
                              daemon=True).start()
         except Exception:
+            with self._handles_lock:
+                self._operations.pop(handle_ref, None)
+                self._pending_handles.pop(handle_ref, None)
             return self._retain_indeterminate(plan.identity_digest,
                                               "spawn:watcher_unavailable")
         return Started(handle_ref=handle_ref)
 
-    def _watch_terminal(self, handle: ExecutionHandle) -> None:
+    def _watch_terminal(self, ref: str, record: _HandleRecord,
+                        deposit_authority: object) -> None:
         """FIX-M2-R2/R3: punto único de transferencia de ownership.
 
-        Un solo hilo por acción consume el traspaso del host, deposita el
-        resultado en el handle acuñado —la única ruta con autoridad para
-        hacerlo—, libera el slot exactamente una vez y cierra el registro.
+        Un solo hilo por acción consume el traspaso del host, deposita mediante
+        la capability interna no reutilizable `record`, libera el slot
+        exactamente una vez y cierra el registro operacional.
         Ante ausencia definitiva (canal X/error sin terminal) no se fabrica
         resultado: el slot también se libera y los esperadores despiertan a
         una ausencia honesta. Un handle abandonado no retiene slot ni
         registro: la memoria del resultado depositado es del llamador.
         """
-        ref = handle.handle_ref
         try:
             handoff = self._process_host.collect_terminal(ref, timeout=None)
             if handoff is not None:
-                handle.deposit_terminal_result(_build_awaited(handoff), self)
+                record.deposit_once(_build_awaited(handoff), deposit_authority)
         finally:
             self._slots.release()
             with self._handles_lock:
-                if self._handles.get(ref) is handle:
-                    self._handles.pop(ref, None)
-            handle.mark_terminal_closed()
+                if self._operations.get(ref) is record:
+                    self._operations.pop(ref, None)
+            record.close_without_result(deposit_authority)
 
     def handle_for(self, handle_ref: str) -> Optional[ExecutionHandle]:
-        """Devuelve el handle emitido por **esta** instancia, si vive."""
+        """Transfiere una vez la capability prometida por `Started`.
+
+        El terminal no elimina esta custodia. Su cota se libera al adquirir,
+        no al terminar el proceso, y nunca estuvo asociada al slot de runtime.
+        """
+        if type(handle_ref) is not str:
+            return None
         with self._handles_lock:
-            return self._handles.get(handle_ref)
+            pending = self._pending_handles.pop(handle_ref, None)
+            if pending is None:
+                return None
+            self._acquired[pending.handle] = pending.record
+        self._pending_capacity.release()
+        return pending.handle
+
+    def _record_for(self, handle: ExecutionHandle) -> Optional[_HandleRecord]:
+        """Autoridad por identidad exacta; datos/token copiados no bastan."""
+        with self._handles_lock:
+            return self._acquired.get(handle)
 
     def terminate(self, handle: object,
                   reason: object = None) -> TerminationOutcome:
@@ -366,12 +535,15 @@ class StartService:
             return TerminationRejected()
         if not handle.authenticates_for(self._operator_key, self._instance):
             return TerminationRejected()
+        record = self._record_for(handle)
+        if record is None:
+            return TerminationRejected()
         # Repetición con el mismo objeto: mismo receipt, sin segundo efecto.
         if handle.already_terminated():
             return handle.linearized_receipt()
         # Post-resultado o handle ya liberado: se linealiza en el handle, NO
         # se contacta al supervisor y NO se reclasifica el resultado (D-M2-4).
-        if handle.has_terminal_result or handle.released:
+        if record.terminal_closed or handle.released:
             return handle.linearized_receipt()
         accepted = handle.linearized_receipt()
         try:
@@ -401,18 +573,14 @@ class StartService:
             return None
         if not handle.authenticates_for(self._operator_key, self._instance):
             return None
-        with self._handles_lock:
-            registered = self._handles.get(handle.handle_ref)
-            if registered is not None and registered is not handle:
-                return None
-        if not handle.wait_terminal(timeout):
+        record = self._record_for(handle)
+        if record is None:
             return None
-        stored = handle.take_terminal_result()
+        if not record.wait(timeout):
+            return None
+        stored = record.take_once()
         if stored is None:
             return None
-        with self._handles_lock:
-            if self._handles.get(handle.handle_ref) is handle:
-                self._handles.pop(handle.handle_ref, None)
         handle.release()
         return stored
 

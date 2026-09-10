@@ -127,17 +127,92 @@ class CapacidadTests(unittest.TestCase):
 
     def test_handle_retenido_conserva_su_memoria(self) -> None:
         """Retener un handle terminal retiene su resultado: memoria del
-        llamador, no del runtime. El depósito es privilegio del coordinador
-        que acuñó el handle (FIX-M2-R4)."""
+        caller-capability state, no del runtime operacional (FIX-M2-R12)."""
         host = FakeProcessHost()
         svc = make_start_service(host=host)
         out = svc.start(_request(1))
         assert isinstance(out, Started)
         handle = svc.handle_for(out.handle_ref)
         assert handle is not None
-        self.assertTrue(handle.deposit_terminal_result({"payload": "x"}, svc),
-                        "el coordinador acuñador puede depositar")
-        self.assertTrue(handle.has_terminal_result)
+        host.deliver_terminal(out.handle_ref,
+                              fake_handoff({"outcome": "executed"}, b"x"))
+        self.assertTrue(_eventually(lambda: svc.operational_record_count == 0))
+        self.assertEqual(svc.slots_in_use, 0)
+        self.assertIsNotNone(svc.await_result(handle))
+
+    def test_terminal_inmediato_no_pierde_capability_500_iteraciones(self) -> None:
+        """FIX-M2-R12: replay exacto de CORR-M2-01; `lost` debe ser cero."""
+        class ImmediateHost(FakeProcessHost):
+            def spawn(self, plan, *, deadline_eff_ms,
+                      config_fingerprint=None, validity_bound=False):
+                ref = super().spawn(
+                    plan, deadline_eff_ms=deadline_eff_ms,
+                    config_fingerprint=config_fingerprint,
+                    validity_bound=validity_bound)
+                self.deliver_terminal(ref, fake_handoff({"outcome": "executed"}))
+                return ref
+
+        host = ImmediateHost()
+        svc = make_start_service(
+            host=host, config=M2Config.build(max_concurrent_actions=1))
+        lost = 0
+        for n in range(1, 501):
+            out = svc.start(_request(n))
+            assert isinstance(out, Started)
+            handle = svc.handle_for(out.handle_ref)
+            if handle is None:
+                lost += 1
+                continue
+            self.assertIsNotNone(svc.await_result(handle))
+        self.assertEqual(lost, 0)
+
+    def test_terminal_antes_de_que_start_retorne_conserva_capability(self) -> None:
+        class TerminalInsideSpawn(FakeProcessHost):
+            def spawn(self, plan, *, deadline_eff_ms,
+                      config_fingerprint=None, validity_bound=False):
+                ref = super().spawn(
+                    plan, deadline_eff_ms=deadline_eff_ms,
+                    config_fingerprint=config_fingerprint,
+                    validity_bound=validity_bound)
+                self.deliver_terminal(ref, fake_handoff({"outcome": "executed"}))
+                return ref
+
+        svc = make_start_service(host=TerminalInsideSpawn())
+        out = svc.start(_request(1))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        self.assertIsNotNone(handle)
+        self.assertIsNotNone(svc.await_result(handle))
+
+    def test_capabilities_pendientes_tienen_backpressure_pre_spawn(self) -> None:
+        class ImmediateHost(FakeProcessHost):
+            def spawn(self, plan, *, deadline_eff_ms,
+                      config_fingerprint=None, validity_bound=False):
+                ref = super().spawn(
+                    plan, deadline_eff_ms=deadline_eff_ms,
+                    config_fingerprint=config_fingerprint,
+                    validity_bound=validity_bound)
+                self.deliver_terminal(ref, fake_handoff())
+                return ref
+
+        store = MemoryReplayStore()
+        host = ImmediateHost()
+        svc = make_start_service(
+            store=store, host=host,
+            config=M2Config.build(max_concurrent_actions=1))
+        primero = svc.start(_request(1))
+        assert isinstance(primero, Started)
+        self.assertTrue(_eventually(lambda: svc.slots_in_use == 0))
+        segundo_req = _request(2)
+        segundo = svc.start(segundo_req)
+        assert isinstance(segundo, StartFailed)
+        self.assertEqual(segundo.safe_detail, "capacity:no_handle_slot")
+        self.assertEqual(len(host.spawns), 1, "el rechazo precede al spawn")
+        self.assertEqual(svc.pending_handle_count, 1)
+        self.assertIsNotNone(svc.handle_for(primero.handle_ref))
+        reintento = svc.start(segundo_req)
+        self.assertIsInstance(reintento, Started,
+                              "el rechazo no consumió el token")
 
 
 class CarreraDeSlotsTests(unittest.TestCase):
@@ -303,10 +378,65 @@ class LinealizacionHandoffTests(unittest.TestCase):
         self.assertIsNone(svc.await_result(forjado))
         self.assertIsNone(svc_b.await_result(handle),
                           "cross-instance no recolecta")
-        # El resultado depositado por el coordinador no puede fabricarse
-        # desde fuera del objeto acuñador.
-        self.assertFalse(handle.deposit_terminal_result({"x": 1}, None))
-        self.assertFalse(handle.deposit_terminal_result({"x": 1}, svc_b))
+        # FIX-M2-R13: el handle no expone ninguna operación de depósito.
+        self.assertFalse(hasattr(handle, "deposit_terminal_result"))
+        self.assertFalse(hasattr(handle, "store_terminal_result"))
+
+    def test_objeto_con_datos_copiados_no_adquiere_autoridad(self) -> None:
+        from src.domain.execution_handle import ExecutionHandle
+        host = FakeProcessHost()
+        svc = make_start_service(host=host)
+        out = svc.start(_request(1))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        copied = ExecutionHandle(
+            handle_ref=handle.handle_ref,
+            coordinator_instance=svc.coordinator_instance,
+            identity_digest=handle.identity_digest,
+            action_id=handle.action_id,
+            termination_token=handle._token)  # type: ignore[attr-defined]
+        self.assertIsNone(svc.await_result(copied))
+        host.deliver_terminal(out.handle_ref, fake_handoff())
+        self.assertIsNotNone(svc.await_result(handle),
+                             "el objeto copiado no afecta al legítimo")
+
+    def test_deposito_falso_no_bloquea_el_terminal_real(self) -> None:
+        """FIX-M2-R13: ni un terminal bien tipado con autoridad inventada
+        ni un objeto de tipo ajeno pueden efectuar la transición."""
+        from src.application.start_service import _build_awaited
+        host = FakeProcessHost()
+        svc = make_start_service(host=host)
+        out = svc.start(_request(1))
+        assert isinstance(out, Started)
+        handle = svc.handle_for(out.handle_ref)
+        assert handle is not None
+        record = svc._record_for(handle)  # type: ignore[attr-defined]
+        assert record is not None
+        falso_tipado = _build_awaited(fake_handoff({"outcome": "executed"}))
+        self.assertFalse(record.deposit_once(falso_tipado, object()))
+        self.assertFalse(record.deposit_once(object(), object()))
+        self.assertFalse(record.close_without_result(object()))
+        host.deliver_terminal(out.handle_ref, fake_handoff(stdout=b"real"))
+        result = svc.await_result(handle)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.stdout, b"real")  # type: ignore[union-attr]
+        self.assertIsNone(svc.await_result(handle), "un solo consumidor")
+
+    def test_transicion_interna_valida_tipo_y_es_de_un_solo_uso(self) -> None:
+        from src.application.start_service import _HandleRecord, _build_awaited
+        from src.domain.execution_result import AwaitedExecution
+        authority = object()
+        record = _HandleRecord("0" * 16, authority)
+        invalido = AwaitedExecution(  # type: ignore[arg-type]
+            result=object(), stdout=b"", stderr=b"")
+        self.assertFalse(record.deposit_once(invalido, authority))
+        valido = _build_awaited(fake_handoff(stdout=b"real"))
+        self.assertTrue(record.deposit_once(valido, authority))
+        self.assertFalse(record.deposit_once(valido, authority),
+                         "la autoridad se consume con el primer depósito")
+        self.assertIs(record.take_once(), valido)
+        self.assertIsNone(record.take_once(), "el resultado se consume una vez")
 
 
 class RegresionSlotsTests(unittest.TestCase):

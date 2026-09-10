@@ -232,6 +232,135 @@ class AutoridadUnicaTests(unittest.TestCase):
              cfg.subreaper_requested))
         plan_cfg = cfg.guarantee_assumptions()
         self.assertIn("termination_grace_ms_configured=777", plan_cfg)
+        self.assertEqual(host.config_fingerprint, cfg.fingerprint)
+
+    def test_fingerprint_es_canonico_determinista_y_completo(self) -> None:
+        a = M2Config.build(termination_grace_ms=777)
+        b = M2Config.build(termination_grace_ms=777)
+        c = M2Config.build(termination_grace_ms=778)
+        self.assertEqual(a.fingerprint, b.fingerprint)
+        self.assertRegex(a.fingerprint, r"^[0-9a-f]{64}$")
+        self.assertNotEqual(a.fingerprint, c.fingerprint)
+
+    def test_admission_acredita_el_perfil_local_sin_cambiar_wire(self) -> None:
+        from src.application.admit import AdmissionService
+        from tests.unit.helpers_m1 import (
+            MemoryReplayStore, NOW, TEST_KEY, TEST_SALT)
+        cfg = M2Config.build(termination_grace_ms=1234)
+        admission = AdmissionService(
+            replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+            operator_key=TEST_KEY, wall_clock=lambda: NOW,
+            mono_clock=lambda: 0.0, m2_config=cfg)
+        self.assertEqual(admission.m2_config_fingerprint, cfg.fingerprint)
+        sin_m2 = AdmissionService(
+            replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+            operator_key=TEST_KEY, wall_clock=lambda: NOW,
+            mono_clock=lambda: 0.0)
+        self.assertIsNone(sin_m2.m2_config_fingerprint)
+
+    def test_2000_1500_500_se_rechaza_antes_del_cas_y_spawn(self) -> None:
+        from src.application.admit import AdmissionService
+        from src.application.start_service import StartService
+        from src.domain.start_outcomes import StartFailed
+        from src.domain.start_request import StartRequest
+        from tests.unit.helpers_m1 import (
+            MemoryReplayStore, NOW, TEST_KEY, TEST_KEY_ID, TEST_SALT,
+            valid_request_bytes)
+        from tests.unit.helpers_m2 import FakeProcessHost
+
+        admission_cfg = M2Config.build(termination_grace_ms=2000)
+        start_cfg = M2Config.build(termination_grace_ms=1500)
+        host_cfg = M2Config.build(termination_grace_ms=500)
+        admission = AdmissionService(
+            replay_store=MemoryReplayStore(), deployment_salt=TEST_SALT,
+            operator_key=TEST_KEY, wall_clock=lambda: NOW,
+            mono_clock=lambda: 0.0, m2_config=admission_cfg)
+        raw = valid_request_bytes()
+        admitted = admission.admit(raw)
+        token = getattr(admitted, "admitted_action")
+        store = MemoryReplayStore()
+        host = FakeProcessHost(config_fingerprint=host_cfg.fingerprint)
+        svc = StartService(
+            replay_store=store, process_host=host, operator_key=TEST_KEY,
+            active_key_id=TEST_KEY_ID, config=start_cfg,
+            declared_config_fingerprint=admission.m2_config_fingerprint,
+            wall_clock=lambda: float(NOW))
+        out = svc.start(StartRequest(
+            admitted_action=token, action_request_wire=raw))
+        self.assertIsInstance(out, StartFailed)
+        assert isinstance(out, StartFailed)
+        self.assertEqual(out.safe_detail,
+                         "config:declared_fingerprint_mismatch")
+        self.assertEqual(host.spawns, [], "la divergencia precede al spawn")
+        self.assertEqual(store._spent, set(), "el token no fue consumido")
+
+    def test_host_sin_acreditacion_no_adquiere_autoridad(self) -> None:
+        from src.application.start_service import StartService
+        from src.domain.start_outcomes import StartFailed
+        from tests.unit.helpers_m1 import (
+            MemoryReplayStore, NOW, TEST_KEY, TEST_KEY_ID)
+        from tests.unit.helpers_m2 import FakeProcessHost, valid_start_request
+        cfg = M2Config.build()
+        host = FakeProcessHost()
+        svc = StartService(
+            replay_store=MemoryReplayStore(), process_host=host,
+            operator_key=TEST_KEY, active_key_id=TEST_KEY_ID, config=cfg,
+            declared_config_fingerprint=cfg.fingerprint,
+            wall_clock=lambda: float(NOW))
+        out = svc.start(valid_start_request())
+        self.assertIsInstance(out, StartFailed)
+        assert isinstance(out, StartFailed)
+        self.assertEqual(out.safe_detail, "config:host_fingerprint_missing")
+        self.assertEqual(host.spawns, [])
+
+    def test_host_divergente_se_rechaza_antes_del_spawn(self) -> None:
+        from src.application.start_service import StartService
+        from src.domain.start_outcomes import StartFailed
+        from tests.unit.helpers_m1 import (
+            MemoryReplayStore, NOW, TEST_KEY, TEST_KEY_ID)
+        from tests.unit.helpers_m2 import FakeProcessHost, valid_start_request
+        cfg = M2Config.build(termination_grace_ms=1500)
+        host = FakeProcessHost(config_fingerprint=M2Config.build(
+            termination_grace_ms=500).fingerprint)
+        svc = StartService(
+            replay_store=MemoryReplayStore(), process_host=host,
+            operator_key=TEST_KEY, active_key_id=TEST_KEY_ID, config=cfg,
+            declared_config_fingerprint=cfg.fingerprint,
+            wall_clock=lambda: float(NOW))
+        out = svc.start(valid_start_request())
+        self.assertIsInstance(out, StartFailed)
+        assert isinstance(out, StartFailed)
+        self.assertEqual(out.safe_detail, "config:host_fingerprint_mismatch")
+        self.assertEqual(host.spawns, [])
+
+    def test_drift_aplicado_del_host_se_rechaza_antes_del_cas(self) -> None:
+        from src.adapters.posix_supervisor import PosixSupervisorHost
+        from src.application.start_service import StartService
+        from src.domain.start_outcomes import StartFailed
+        from tests.unit.helpers_m1 import (
+            MemoryReplayStore, NOW, TEST_KEY, TEST_KEY_ID)
+        from tests.unit.helpers_m2 import valid_start_request
+        cfg = M2Config.build(termination_grace_ms=1500)
+        host = PosixSupervisorHost.from_config(cfg)
+        host._termination_grace_ms = 500  # type: ignore[attr-defined]
+        store = MemoryReplayStore()
+        svc = StartService(
+            replay_store=store, process_host=host, operator_key=TEST_KEY,
+            active_key_id=TEST_KEY_ID, config=cfg,
+            declared_config_fingerprint=cfg.fingerprint,
+            wall_clock=lambda: float(NOW))
+        out = svc.start(valid_start_request())
+        self.assertIsInstance(out, StartFailed)
+        assert isinstance(out, StartFailed)
+        self.assertEqual(out.safe_detail, "config:host_fingerprint_missing")
+        self.assertEqual(store._spent, set(), "el rechazo precede al CAS")
+
+    def test_construccion_directa_incoherente_del_host_es_rechazada(self) -> None:
+        from src.adapters.posix_supervisor import PosixSupervisorHost
+        cfg = M2Config.build(termination_grace_ms=1500)
+        with self.assertRaises(ValueError):
+            PosixSupervisorHost(
+                termination_grace_ms=500, _validated_config=cfg)
 
     def test_from_config_rechaza_lo_que_no_es_config(self) -> None:
         from src.adapters.posix_supervisor import PosixSupervisorHost

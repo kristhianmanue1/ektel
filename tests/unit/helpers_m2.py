@@ -70,11 +70,13 @@ class FakeProcessHost:
     """
 
     def __init__(self, *, reject: bool = False, raise_unknown: bool = False,
-                 bad_ref: bool = False, bad_ref_hex: bool = False) -> None:
+                 bad_ref: bool = False, bad_ref_hex: bool = False,
+                 config_fingerprint: str | None = None) -> None:
         self.reject = reject
         self.raise_unknown = raise_unknown
         self.bad_ref = bad_ref
         self.bad_ref_hex = bad_ref_hex
+        self._config_fingerprint = config_fingerprint
         self.spawns: list[Any] = []
         self.terminations: list[str] = []
         self._n = 0
@@ -82,6 +84,16 @@ class FakeProcessHost:
         self._terminals: dict[str, Any] = {}
         self._absences: set[str] = set()
         self._events: dict[str, threading.Event] = {}
+
+    @property
+    def config_fingerprint(self) -> str:
+        if self._config_fingerprint is None:
+            raise RuntimeError("host de prueba sin perfil M2 acreditado")
+        return self._config_fingerprint
+
+    def bind_config(self, fingerprint: str) -> None:
+        if self._config_fingerprint is None:
+            self._config_fingerprint = fingerprint
 
     def _event_for(self, handle_ref: str) -> Any:
         with self._lock:
@@ -92,8 +104,13 @@ class FakeProcessHost:
             return event
 
     def spawn(self, plan: Any, *, deadline_eff_ms: int,
+              config_fingerprint: str | None = None,
               validity_bound: bool = False) -> str:
         from src.ports.process_host import SpawnRejected
+        requested = (self.config_fingerprint if config_fingerprint is None
+                     else config_fingerprint)
+        if requested != self.config_fingerprint:
+            raise SpawnRejected("config_fingerprint_mismatch")
         if self.reject:
             raise SpawnRejected("host_rejected")
         if self.raise_unknown:
@@ -173,13 +190,19 @@ def make_start_service(store: Any = None, host: Any = None,
                        config: Any = None, now: float | None = None) -> Any:
     """Construye un `StartService` con relojes y dobles deterministas."""
     from src.application.start_service import StartService
+    from src.application.config import M2Config
     from .helpers_m1 import MemoryReplayStore
+    profile = config if config is not None else M2Config.build()
+    process_host = host if host is not None else FakeProcessHost()
+    if isinstance(process_host, FakeProcessHost):
+        process_host.bind_config(profile.fingerprint)
     return StartService(
         replay_store=store if store is not None else MemoryReplayStore(),
-        process_host=host if host is not None else FakeProcessHost(),
+        process_host=process_host,
         operator_key=TEST_KEY,
         active_key_id=TEST_KEY_ID,
-        config=config,
+        config=profile,
+        declared_config_fingerprint=profile.fingerprint,
         skew_tolerance_s=30.0,
         wall_clock=(lambda: float(NOW) if now is None else now),
     )

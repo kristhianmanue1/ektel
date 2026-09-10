@@ -490,9 +490,9 @@ class PosixSupervisorHost:
 
     FIX-M2-R6: los rangos que este adaptador valida son los espejo exactos de
     D-M2-2/3 (la autoridad normativa es `M2Config`/ADR-012). La vía
-    recomendada de composición es `PosixSupervisorHost.from_config(config)`,
-    que revalida en esta frontera y garantiza que la configuración declarada
-    en el `GuaranteePlan` es la misma que aplica el supervisor.
+    FIX-M2-R14: toda construcción acredita un perfil M2 completo. `from_config`
+    conserva la instancia validada recibida; la construcción directa deriva y
+    valida un perfil canónico de los valores que realmente aplicará.
     """
 
     #: Espejo de los rangos congelados (D-M2-3): la validación se aplica
@@ -513,6 +513,7 @@ class PosixSupervisorHost:
         if not isinstance(config, M2Config):
             raise ValueError("from_config exige un M2Config validado")
         return cls(
+            _validated_config=config,
             subreaper_requested=config.subreaper_requested,
             credit_timeout_ms=config.credit_timeout_ms,
             eof_drain_timeout_ms=config.eof_drain_timeout_ms,
@@ -520,11 +521,12 @@ class PosixSupervisorHost:
             post_kill_drain_ms=config.post_kill_drain_ms,
         )
 
-    def __init__(self, *, subreaper_requested: bool = True,
+    def __init__(self, *, subreaper_requested: bool = False,
                  credit_timeout_ms: int = DEFAULT_CREDIT_TIMEOUT_MS,
                  eof_drain_timeout_ms: int = DEFAULT_EOF_DRAIN_TIMEOUT_MS,
                  termination_grace_ms: int = 2000,
                  post_kill_drain_ms: int = 1000,
+                 _validated_config: Optional[M2Config] = None,
                  ) -> None:
         for name, value, (low, high) in (
                 ("credit_timeout_ms", credit_timeout_ms, self._CREDIT_RANGE),
@@ -543,6 +545,31 @@ class PosixSupervisorHost:
                 <= self._POST_KILL_RANGE[1]):
             raise ValueError(
                 "post_kill_drain_ms: entero exacto en rango [1, 10000]")
+        if _validated_config is None:
+            profile = M2Config.build(
+                max_concurrent_actions=1,
+                termination_grace_ms=termination_grace_ms,
+                post_kill_drain_ms=post_kill_drain_ms,
+                audit_mode="optional",
+                subreaper_requested=subreaper_requested,
+                credit_timeout_ms=credit_timeout_ms,
+                eof_drain_timeout_ms=eof_drain_timeout_ms,
+            )
+        elif not isinstance(_validated_config, M2Config):
+            raise ValueError("_validated_config debe ser M2Config")
+        else:
+            profile = _validated_config
+            applied = (
+                termination_grace_ms, post_kill_drain_ms,
+                subreaper_requested, credit_timeout_ms, eof_drain_timeout_ms)
+            declared = (
+                profile.termination_grace_ms, profile.post_kill_drain_ms,
+                profile.subreaper_requested, profile.credit_timeout_ms,
+                profile.eof_drain_timeout_ms)
+            if applied != declared:
+                raise ValueError("configuracion aplicada diverge del perfil")
+        self._config_fingerprint = profile.fingerprint
+        self._config_profile = profile
         self._caps = platform_caps.detect()
         self._subreaper_requested = subreaper_requested
         self._credit_timeout_ms = credit_timeout_ms
@@ -553,11 +580,36 @@ class PosixSupervisorHost:
         self._lock = threading.Lock()
 
     @property
+    def config_fingerprint(self) -> str:
+        if not self._applied_profile_matches():
+            raise RuntimeError("configuracion aplicada diverge del perfil")
+        return self._config_fingerprint
+
+    def _applied_profile_matches(self) -> bool:
+        return (
+            self._termination_grace_ms == self._config_profile.termination_grace_ms
+            and self._post_kill_drain_ms
+            == self._config_profile.post_kill_drain_ms
+            and self._subreaper_requested
+            is self._config_profile.subreaper_requested
+            and self._credit_timeout_ms == self._config_profile.credit_timeout_ms
+            and self._eof_drain_timeout_ms
+            == self._config_profile.eof_drain_timeout_ms)
+
+    @property
     def caps(self) -> platform_caps.PlatformCaps:
         return self._caps
 
     def spawn(self, plan: ExecutionPlan, *, deadline_eff_ms: int,
+              config_fingerprint: Optional[str] = None,
               validity_bound: bool = False) -> str:
+        requested_fingerprint = (self._config_fingerprint
+                                 if config_fingerprint is None
+                                 else config_fingerprint)
+        if (type(requested_fingerprint) is not str
+                or requested_fingerprint != self._config_fingerprint
+                or not self._applied_profile_matches()):
+            raise SpawnRejected("config_fingerprint_mismatch")
         payload = json.dumps({
             "command_absolute": plan.command_absolute,
             "args": list(plan.args),

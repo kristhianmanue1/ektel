@@ -30,6 +30,7 @@ API EXPERIMENTAL (spec §16). stdlib-only.
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 #: Único perfil de auditoría que M2 puede operar (D-M2-5(a)).
@@ -171,3 +172,23 @@ class M2Config:
             f"supervisor_scope={supervisor_scope}",
             f"subreaper_requested={'1' if requested else '0'}",
         )
+
+    @property
+    def fingerprint(self) -> str:
+        """Identidad canónica local del perfil completo (FIX-M2-R14).
+
+        No es secreto, firma ni documento wire. El dominio y el orden fijo de
+        campos impiden que representaciones incidentales del dataclass definan
+        identidad. Todos los valores ya atravesaron `__post_init__`.
+        """
+        canonical = "\n".join((
+            "ektel/m2-config/v1",
+            f"max_concurrent_actions={self.max_concurrent_actions}",
+            f"termination_grace_ms={self.termination_grace_ms}",
+            f"post_kill_drain_ms={self.post_kill_drain_ms}",
+            f"audit_mode={self.audit_mode}",
+            f"subreaper_requested={int(self.subreaper_requested)}",
+            f"credit_timeout_ms={self.credit_timeout_ms}",
+            f"eof_drain_timeout_ms={self.eof_drain_timeout_ms}",
+        )).encode("ascii")
+        return hashlib.sha256(canonical).hexdigest()

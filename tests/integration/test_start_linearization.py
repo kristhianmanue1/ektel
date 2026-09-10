@@ -269,12 +269,13 @@ def _pair(script: str, n: int = 1, *, deadline_ms: int = 30000,
 def _real_service(**kw: object) -> StartService:
     """Coordinador real contra supervisor real: sin dobles."""
     now = kw.pop("now", None)
-    host = PosixSupervisorHost(**kw)  # type: ignore[arg-type]
+    cfg = M2Config.build(max_concurrent_actions=4, **kw)
+    host = PosixSupervisorHost.from_config(cfg)
     reloj = (lambda: float(NOW)) if now is None else (lambda: float(now))  # type: ignore[arg-type]
     return StartService(
         replay_store=MemoryReplayStore(), process_host=host,
         operator_key=TEST_KEY, active_key_id=TEST_KEY_ID,
-        config=M2Config.build(max_concurrent_actions=4),
+        config=cfg, declared_config_fingerprint=cfg.fingerprint,
         wall_clock=reloj)
 
 
@@ -403,6 +404,8 @@ class CicloCompletoTests(unittest.TestCase):
             replay_store=MemoryReplayStore(), process_host=host,
             operator_key=TEST_KEY, active_key_id=TEST_KEY_ID,
             config=M2Config.build(termination_grace_ms=500),
+            declared_config_fingerprint=M2Config.build(
+                termination_grace_ms=500).fingerprint,
             wall_clock=lambda: float(NOW))
         out = svc.start(_pair("import sys;sys.stdout.write('x')", n=10,
                               deadline_ms=2500))

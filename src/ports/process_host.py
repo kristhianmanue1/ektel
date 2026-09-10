@@ -37,7 +37,13 @@ class SpawnRejected(Exception):
 class ProcessHost(Protocol):
     """Creación y terminación de procesos supervisados, todo local."""
 
+    @property
+    def config_fingerprint(self) -> str:
+        """Perfil M2 completo que el host acredita aplicar localmente."""
+        ...
+
     def spawn(self, plan: ExecutionPlan, *, deadline_eff_ms: int,
+              config_fingerprint: str | None = None,
               validity_bound: bool = False) -> str:
         """Crea el proceso bajo el plan inmutable y devuelve `handle_ref`
         (16 hex). Lanza `SpawnRejected` si falla **antes** de crearlo.
