@@ -44,7 +44,7 @@ en `propuestas/` como provenance y no se reescriben.
 
 | Qué | Estado | Ruta |
 |---|---|---|
-| **Expediente G-M2-15** | Re-verificación 2 NOT-CONFORMING; adjudicación post-Astra y ratificación humana R15/R16. Tercera corrección sin promoción de gate | revisiones/g-m2-15/ |
+| **Expediente G-M2-15** | Tercera corrección R15/R16 y re-verificación independiente PROCEED bajo modelo ratificado; sin promoción de gate | revisiones/g-m2-15/ |
 | Encargo de revisión externa (G-M2-15) | 3 familias, misma raíz, sin verse antes del primer veredicto; sin mayoría simple | revisiones/encargo-revision-externa-m2-2026-09-09.md |
 | Estado de evidencia por gate | 14 verdes, 1 pendiente | evidencia/estado-evidencia-m2-2026-09-09.md |
 | Caracterización Darwin arm64 (clase L) | 339 OK, 4 skips | evidencia/caracterizacion-m2-darwin-2026-09-09.md |

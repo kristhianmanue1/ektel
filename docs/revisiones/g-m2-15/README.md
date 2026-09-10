@@ -1,7 +1,8 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
 **Estado: ratificación humana R13-STRONG/R15/R16 asentada; tercera corrección
-R15/R16 implementada, pendiente de re-verificación externa.
+R15/R16 implementada; re-verificación independiente 3 PROCEED dentro del modelo
+ratificado. El veredicto no adjudica cierre de gate.
 R13 fuerte BLOCKED-BY-NORMATIVE-GAP; R13/R14 conservan NOT-SATISFIED.
 G-M2-15 = CORRECTIVE-FIX-AND-RETRY. M2 = OPEN.
 M3 = BLOCKED.**
@@ -57,6 +58,15 @@ La tercera corrección separa writer terminal, rechaza handles incompletos y
 vincula Start a evidencia efímera producida por Admission. No ofrece aislamiento
 frente a introspección. Nuevo MANIFEST-ROOT de implementación:
 `b59553bcb6d4ab696357354ba63ffbae398609ea48426610b447d43bec660588`.
+
+[Paquete correctivo 3](paquete-reverification-correctiva-03-g-m2-15-2026-09-10.md):
+CORRECTIVE-REVIEW-ROOT `f944493bc9872414daf3d46d7ae230adcbfcf42e`;
+385 tests completos en Darwin (5 skips) y Linux aarch64 (1 skip), mypy y fuzzers.
+[Informe independiente 3](informe-reverification-correctiva-03-2026-09-10.md):
+122 pruebas focalizadas y sondas propias; R15/R16 SATISFIED según el revisor
+bajo el modelo ratificado, sin finding bloqueante. Se conserva su observación
+de demora posible de Started después del spawn por contención de Admission.
+No se afirma latencia de retorno acotada ni diversidad de modelos en esta revisión.
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
@@ -152,10 +162,10 @@ R12                       = SATISFIED
 R13                       = NOT-SATISFIED
 R13-STRONG                = BLOCKED-BY-NORMATIVE-GAP
 R14                       = NOT-SATISFIED
-R15                       = IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION
-R16                       = IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION
+R15                       = IMPLEMENTED / EXTERNAL-REVERIFICATION-PROCEED
+R16                       = IMPLEMENTED / EXTERNAL-REVERIFICATION-PROCEED
 normative_ratification    = RATIFIED-BY-HUMAN
-corrective_action_3       = IMPLEMENTED / PENDING-EXTERNAL-REVERIFICATION
+corrective_action_3       = IMPLEMENTED / EXTERNAL-REVERIFICATION-PROCEED
 
 G-M2-15 = CORRECTIVE-FIX-AND-RETRY
 M2       = OPEN
@@ -166,6 +176,6 @@ G-M2-01, G-M2-05, G-M2-06, G-M2-10, G-M2-11, G-M2-12, G-M2-14 y G-M2-15
 permanecen con evidencia de la re-verificación 2. No se promueve ningún gate.
 La adjudicación arquitectónica no equivale a aceptación del diff posterior.
 Su ratificación y autorización ya constan en el acto humano enlazado. La tercera
-corrección requiere re-verificación externa; las pruebas del implementador no
-adjudican conformidad. R12 permanece satisfecha por la evidencia existente;
+corrección recibió re-verificación independiente; ni su PROCEED ni las pruebas
+del implementador adjudican cierre del gate. R12 conserva la evidencia existente;
 R13/R14 no se cierran mediante el nuevo alcance propuesto de R15/R16.
