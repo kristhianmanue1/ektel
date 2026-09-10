@@ -1,6 +1,6 @@
 # G-M2-15 — expediente de revisión adversarial externa
 
-**Estado: EN CURSO — 1 de 3 informes recibidos. Sin reconciliar.**
+**Estado: EN CURSO — 2 de 3 informes recibidos. SIN RECONCILIAR.**
 
 Encargo: `../encargo-revision-externa-m2-2026-09-09.md`.
 
@@ -20,8 +20,23 @@ MANIFEST-ROOT. Si cualquiera difiere, la revisión se detiene.
 | # | Revisor | Fecha | Veredicto | P0 | P1 | Reejecutó suites | Informe |
 |---|---|---|---|---|---|---|---|
 | 1 | OpenAI — GPT-5.6 Sol | 09-09 | **FIX-AND-RETRY** | 0 | 5 | **no** (sin resolución DNS a github.com) | `informe-01-openai-gpt-5-6-sol-2026-09-09.md` |
-| 2 | *pendiente* | — | — | — | — | — | — |
+| 2 | Qwen — familia Alibaba/Qwen | 09-09 | **FIX-AND-RETRY** (además P2: 1 · P3: 2) | 0 | 2 | **sí — Darwin arm64** (339 OK, 4 skips; `mypy --strict` limpio); **Linux no**; 3 sondas adversariales propias fuera del repo (`sondas-qwen/`) | `informe-02-qwen-2026-09-09.md` |
 | 3 | *pendiente* | — | — | — | — | — | — |
+
+**Metadata de evidencia, no puntuación de credibilidad.** El informe 1 no
+reejecutó suites (hallazgos por flujo de control estático con reproducciones
+ejecutables); el informe 2 reejecutó la suite Darwin completa y sondas propias
+pero no la Linux. Estas diferencias de nivel de ejecución se registran para
+ponderar la evidencia en la reconciliación; **no** convierten a un informe en
+más o menos creíble de forma automática.
+
+**Metadata exposure declarada (informe 2, sin interpretar).** El harness del
+revisor Qwen reveló al inicio de su sesión la existencia y el título del
+commit `fa3ce89` (informe 1 de 3). El revisor declara no haber leído su
+contenido, ni el informe OpenAI, ni este expediente, ni ningún artefacto
+posterior al REVIEW-ROOT antes de emitir su veredicto. Clasificado únicamente
+como *metadata exposure declarada*: si invalida, reduce o no afecta la
+independencia lo decidirá la reconciliación, no este asiento.
 
 ## Reglas vigentes de este expediente
 
