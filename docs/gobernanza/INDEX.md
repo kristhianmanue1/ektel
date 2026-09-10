@@ -42,7 +42,8 @@ en `propuestas/` como provenance y no se reescriben.
 
 | Qué | Estado | Ruta |
 |---|---|---|
-| **Encargo de revisión externa (G-M2-15)** | **abierto** — 3 familias, misma raíz, sin verse antes del primer veredicto; sin mayoría simple | revisiones/encargo-revision-externa-m2-2026-09-09.md |
+| **Expediente G-M2-15** | **EN CURSO — 1 de 3 informes.** OpenAI GPT-5.6 Sol: `FIX-AND-RETRY`, 0 P0 y 5 P1, **sin reejecutar suites**. **Sin reconciliar**: no se corrige ni se promueve nada hasta los tres | revisiones/g-m2-15/ |
+| Encargo de revisión externa (G-M2-15) | 3 familias, misma raíz, sin verse antes del primer veredicto; sin mayoría simple | revisiones/encargo-revision-externa-m2-2026-09-09.md |
 | Estado de evidencia por gate | 14 verdes, 1 pendiente | evidencia/estado-evidencia-m2-2026-09-09.md |
 | Caracterización Darwin arm64 (clase L) | 339 OK, 4 skips | evidencia/caracterizacion-m2-darwin-2026-09-09.md |
 | Caracterización Linux aarch64 (clase V) | 339 OK, 1 skip | evidencia/caracterizacion-m2-linux-2026-09-09.md |
