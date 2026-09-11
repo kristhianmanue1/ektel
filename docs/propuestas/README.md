@@ -40,6 +40,18 @@ proyecto.
   [ADR-011 aceptada](../adr/adr-011-handoff-admision-start.md), normativa por
   [acta propia](../decisiones/aceptacion-adr-011-handoff-2026-08-28.md), pero
   todavía sin autoridad para implementar M2.
+- [Agent Memory Enforcement Contract v0.2 Candidate](Agent%20Memory%20Enforcement%20Contract%20v0.2%20Candidate.md)
+  — candidato `DRAFT / PENDING-EXTERNAL-REVIEW` (2026-09-11): resuelve los
+  cinco P1 de la [revisión adversarial de v0.1](../revisiones/revision-adversarial-amec-v0.1-2026-09-11.md)
+  (policy root, canonicalización, bootstrap, binding de autoridad humana,
+  profile efectivo), añade grafo de estados y matriz MEC×perfil, y clasifica
+  los P2 restantes (§32). Registro de existencia: **no es decisión vigente**;
+  pendiente de revisión adversarial externa independiente. La trazabilidad
+  completa está en [../revisiones/amec-v0.2-change-map-2026-09-11.md](../revisiones/amec-v0.2-change-map-2026-09-11.md).
+  No autoriza implementación ni selecciona contenido para EKTEL M3.
+- [Agent Memory Enforcement Contract v0.1](Agent%20Memory%20Enforcement%20Contract%20v0.1.md)
+  — `REVIEWED / SUPERSEDED-AS-CANDIDATE`: conservado como base histórica
+  revisada; sustituido como candidato por v0.2.
 - [Paquete de preparación para la decisión sobre M2](paquete-preparacion-m2-2026-08-28.md)
   — **NO autoriza M2**: tarjeta que traduce
   ADR-003/004/005/006/007/008/009/010/011 a alcance, DoD y quince gates, expone
